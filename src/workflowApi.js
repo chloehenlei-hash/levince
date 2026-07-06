@@ -1,4 +1,4 @@
-const BACKEND_URL = "";
+const BACKEND_URL = "https://script.google.com/macros/s/AKfycbx_GUEtP6MUKq_jVcD_anhO946CE0hH0TgCoeMkCNmUvQT7h6og98OLZyWSTt6qo-kH/exec";
 const SYSTEM_USER = "Levince";
 
 export function isWorkflowReady() {

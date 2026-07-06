@@ -33,7 +33,10 @@ Create a GitHub-friendly invoice workflow website that:
 - Google Sheet backend created: `https://docs.google.com/spreadsheets/d/1gMMS_y1z_2wIMUa5fiZwyCA2l0p3KJB64LXx_CBUE78/edit`.
 - UX simplified again: Setup, PIN, Test Connection, user selector, and manual connection fields were removed from the website.
 - Apps Script backend was compressed and no longer checks a PIN. It is currently 113 lines.
-- Current limitation: the Apps Script Web App URL still has to be created once and pasted into `src/workflowApi.js` as the hidden `BACKEND_URL`; after that the website connects automatically.
+- Apps Script Web App URL has been added to `src/workflowApi.js` as the hidden `BACKEND_URL`; the website should now connect automatically.
+- Apps Script now uses the bound Google Sheet through `getActiveSpreadsheet()`.
+- Backend POST/listInvoices test now succeeds and returns `{ ok: true, invoices: [], items: [] }`.
+- Local browser smoke test confirmed the website can load invoices from Google Sheet and no Setup/PIN UI is visible.
 
 ## Important Decisions
 - Use Vite/React because the original invoice generator is React/Vite and should stay visually/functionally the same.
@@ -68,9 +71,11 @@ Create a GitHub-friendly invoice workflow website that:
 - Removed Setup, PIN, Test Connection, user selector, and all manual website connection state.
 - Ran Vite production build successfully after removing manual setup.
 - Ran syntax check for the compact `apps-script/Code.gs`.
+- Added the deployed Apps Script Web App URL to the frontend backend helper.
+- Tested Apps Script Web App URL. GET returned `{ ok: true }`; after switching to `getActiveSpreadsheet()`, POST/listInvoices returned `{ ok: true, invoices: [], items: [] }`.
+- Ran Vite production build successfully with hidden backend URL.
+- Ran local browser smoke test; Invoices -> Refresh showed `Loaded 0 invoice(s).`.
 
 ## Exact Next Steps
-1. Deploy Apps Script manually from `apps-script/Code.gs`.
-2. Paste the deployed Apps Script Web App URL into `BACKEND_URL` in `src/workflowApi.js`.
-3. Push the updated code to GitHub Pages.
-4. Create the first test invoice, click `Save to Workflow`, mark it paid, and refresh SQL export.
+1. Push `src/workflowApi.js` with the hidden backend URL to GitHub Pages.
+2. Create the first test invoice, click `Save to Workflow`, mark it paid, and refresh SQL export.

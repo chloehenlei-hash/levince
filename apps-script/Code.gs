@@ -19,7 +19,7 @@ function doPost(e) {
 }
 
 function json(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
-function ss() { return SpreadsheetApp.openById(SPREADSHEET_ID); }
+function ss() { return SpreadsheetApp.getActiveSpreadsheet(); }
 function setup() {
   ensure(T.inv, IH); ensure(T.item, ITH); ensure(T.pay, PH); ensure(T.sql, SQLH);
   ensure(T.set, ["Key","Value","Notes"]); ensure(T.log, LH);
