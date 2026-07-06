@@ -1,0 +1,945 @@
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+
+const BASE_URL = import.meta.env?.BASE_URL || "/";
+const LOGO_URL = `${BASE_URL}assets/levince-logo.png`;
+const ZERO_DECIMAL_CURRENCIES = new Set(["TWD", "JPY", "KRW", "IDR", "VND"]);
+
+const black = rgb(0, 0, 0);
+const white = rgb(1, 1, 1);
+const tableRed = rgb(0.6163553, 0.1158337, 0.1298752);
+const receiptRed = rgb(0.6953332, 0.1536742, 0.1277461);
+const lineGrey = rgb(0.625, 0.6249999, 0.6249999);
+const headerDividerGrey = rgb(0.7762491, 0.8099242, 0.8313821);
+const footerGrey = rgb(0.301773, 0.3018176, 0.3017576);
+const emailColor = black;
+const TABLE_ROWS_PER_PAGE = 19;
+const TABLE_DESCRIPTION_MAX_WIDTH = 195;
+const TABLE_LAYOUTS = {
+  normal: {
+    descDividerX: 395.5421,
+    amountDividerX: 464.3019,
+    descriptionMaxWidth: TABLE_DESCRIPTION_MAX_WIDTH,
+  },
+  wider: {
+    descDividerX: 414,
+    amountDividerX: 471,
+    descriptionMaxWidth: 214,
+  },
+  extraWide: {
+    descDividerX: 428,
+    amountDividerX: 476,
+    descriptionMaxWidth: 228,
+  },
+};
+const TABLE_TEXT_SIZE = 10;
+const TABLE_ROW_HEIGHT = 20.75;
+const TABLE_DASHED_BOUNDARIES = 17;
+const REMARK_LINE_HEIGHT = 12;
+
+export const DEFAULT_HEADER_LABELS = {
+  companyName: "COMPANY NAME",
+  customerName: "CUSTOMER NAME",
+  email: "EMAIL",
+  phone: "PHONE",
+  invoiceDate: "DATE",
+  invoiceTitle: "INVOICE TITLE",
+};
+export const DEFAULT_NOTES_TITLE = "Notes:";
+export const DEFAULT_PAYMENT_NOTES = [
+  "Payments can be made to:",
+  "Name : Vincenology Solution",
+  "Address : 141 Jalan Dato Onn Jaafar 30300 Ipoh Perak",
+  "Bank : Malayan Banking Berhad",
+  "Account Number : 5144-8652-7367",
+  "Bank Holder : Vincenology Solution",
+  "Swift Code : MBBEMYKL",
+].join("\n");
+export const DEFAULT_FOOTER_TEXT = "Vincenology Solution 141 Jalan Dato Onn Jaafar 30300 Ipoh Perak.";
+
+function newItemId() {
+  return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function cleanFilename(value) {
+  return String(value || "invoice")
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+export function getCurrentInvoiceDate() {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date());
+}
+
+function parseAmount(value) {
+  const parsed = Number(String(value || "0").replace(/,/g, ""));
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.round(parsed * 100) / 100;
+}
+
+function formatMoney(value, currency) {
+  const amount = parseAmount(value);
+  const fractionDigits = ZERO_DECIMAL_CURRENCIES.has(String(currency || "").trim().toUpperCase()) ? 0 : 2;
+  const formatted = Math.abs(amount).toLocaleString("en-MY", {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  });
+  return amount < 0 ? `(${formatted})` : formatted;
+}
+
+function fitTextToWidth(text, maxWidth, font, size, options = {}) {
+  const minSize = options.minSize ?? 8;
+  const suffix = options.suffix ?? "...";
+  let fontSize = size;
+  const value = String(text || "");
+
+  while (fontSize > minSize && font.widthOfTextAtSize(value, fontSize) > maxWidth) {
+    fontSize -= 0.5;
+  }
+
+  if (font.widthOfTextAtSize(value, fontSize) <= maxWidth) {
+    return { text: value, size: fontSize, width: font.widthOfTextAtSize(value, fontSize) };
+  }
+
+  let trimmed = value;
+  while (trimmed && font.widthOfTextAtSize(`${trimmed}${suffix}`, fontSize) > maxWidth) {
+    trimmed = trimmed.slice(0, -1);
+  }
+  const fitted = trimmed ? `${trimmed.trimEnd()}${suffix}` : "";
+  return { text: fitted, size: fontSize, width: font.widthOfTextAtSize(fitted, fontSize) };
+}
+
+function splitLongWordToWidth(word, maxWidth, font, size) {
+  const chunks = [];
+  let chunk = "";
+
+  String(word || "")
+    .split("")
+    .forEach((character) => {
+      const nextChunk = `${chunk}${character}`;
+      if (!chunk || font.widthOfTextAtSize(nextChunk, size) <= maxWidth) {
+        chunk = nextChunk;
+        return;
+      }
+
+      chunks.push(chunk);
+      chunk = character;
+    });
+
+  if (chunk) chunks.push(chunk);
+  return chunks;
+}
+
+function splitTextToWidth(text, maxWidth, font, size) {
+  const words = String(text || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const lines = [];
+  let currentLine = "";
+
+  words.forEach((word) => {
+    const candidate = currentLine ? `${currentLine} ${word}` : word;
+    if (font.widthOfTextAtSize(candidate, size) <= maxWidth) {
+      currentLine = candidate;
+      return;
+    }
+
+    if (currentLine) {
+      lines.push(currentLine);
+      currentLine = "";
+    }
+
+    if (font.widthOfTextAtSize(word, size) <= maxWidth) {
+      currentLine = word;
+      return;
+    }
+
+    const chunks = splitLongWordToWidth(word, maxWidth, font, size);
+    lines.push(...chunks.slice(0, -1));
+    currentLine = chunks[chunks.length - 1] || "";
+  });
+
+  if (currentLine) lines.push(currentLine);
+  return lines.length ? lines : [""];
+}
+
+function drawBoundedText(page, text, x, y, maxWidth, font, size, options = {}) {
+  const color = options.color ?? black;
+  const fitted = fitTextToWidth(text, maxWidth, font, size, options);
+  if (!fitted.text) return fitted;
+  page.drawText(fitted.text, { x, y, size: fitted.size, font, color });
+  return fitted;
+}
+
+function drawWrappedText(page, text, x, y, maxWidth, font, size, options = {}) {
+  const color = options.color ?? black;
+  const lineHeight = options.lineHeight ?? size + 2;
+  const maxLines = options.maxLines ?? Number.POSITIVE_INFINITY;
+  const lines = splitTextToWidth(text, maxWidth, font, size);
+  const hasLineLimit = Number.isFinite(maxLines);
+  const visibleLines =
+    hasLineLimit && lines.length > maxLines
+      ? [...lines.slice(0, maxLines - 1), lines.slice(maxLines - 1).join(" ")]
+      : lines;
+
+  visibleLines.forEach((line, index) => {
+    const isLimitedLastLine = hasLineLimit && lines.length > maxLines && index === visibleLines.length - 1;
+    const lineText = isLimitedLastLine
+      ? fitTextToWidth(line, maxWidth, font, size, { minSize: size }).text
+      : line;
+    if (!lineText) return;
+    page.drawText(lineText, { x, y: y - index * lineHeight, size, font, color });
+  });
+
+  return visibleLines.length || 1;
+}
+
+function drawRightBoundedText(page, text, leftX, rightX, y, font, size, options = {}) {
+  const color = options.color ?? black;
+  const maxWidth = Math.max(0, rightX - leftX);
+  const fitted = fitTextToWidth(text, maxWidth, font, size, options);
+  if (!fitted.text) return fitted;
+  page.drawText(fitted.text, {
+    x: rightX - fitted.width,
+    y,
+    size: fitted.size,
+    font,
+    color,
+  });
+  return fitted;
+}
+
+function drawCenteredBoundedText(page, text, leftX, rightX, y, font, size, options = {}) {
+  const color = options.color ?? black;
+  const maxWidth = Math.max(0, rightX - leftX);
+  const fitted = fitTextToWidth(text, maxWidth, font, size, options);
+  if (!fitted.text) return fitted;
+  page.drawText(fitted.text, {
+    x: leftX + (maxWidth - fitted.width) / 2,
+    y,
+    size: fitted.size,
+    font,
+    color,
+  });
+  return fitted;
+}
+
+function drawCurrencyAmount(page, amount, currency, y, font, currencyX, amountRightX, options = {}) {
+  const parsedAmount = parseAmount(amount);
+  const fontSize = options.size ?? 10;
+  const minSize = options.minSize ?? 7;
+  const currencyGap = options.currencyGap ?? 2;
+
+  const currencyText = drawBoundedText(page, currency, currencyX, y, 29, font, fontSize, { minSize });
+  const amountLeftX = currencyX + currencyText.width + currencyGap;
+  drawRightBoundedText(page, formatMoney(parsedAmount, currency), amountLeftX, amountRightX, y, font, fontSize, {
+    minSize,
+  });
+}
+
+function splitEditableLines(value) {
+  return String(value || "")
+    .replace(/\r\n/g, "\n")
+    .split("\n");
+}
+
+function getTableLayout(value) {
+  return TABLE_LAYOUTS[value] || TABLE_LAYOUTS.normal;
+}
+
+export function defaultInvoiceData() {
+  return {
+    companyName: "",
+    customerName: "Melanie Chalil",
+    email: "melanie.chalil@gmail.com",
+    phone: "012-223 6976",
+    invoiceDate: getCurrentInvoiceDate(),
+    documentLabel: "INVOICE",
+    invoiceTitle: "LeVince Chauffeur Service",
+    receiptNumber: "104247",
+    currency: "RM",
+    totalOverride: "",
+    notesTitle: DEFAULT_NOTES_TITLE,
+    paymentNotes: DEFAULT_PAYMENT_NOTES,
+    footerText: DEFAULT_FOOTER_TEXT,
+    headerLabels: { ...DEFAULT_HEADER_LABELS },
+    serviceGroups: [
+      createServiceGroup({
+        heading: "Private Chauffeur Service",
+        dates: [
+          createServiceDate({
+            date: "10th May",
+            lines: [createServiceLine({ description: "Airport Transfer", qty: "1", amount: "140.00" })],
+          }),
+          createServiceDate({
+            date: "14th May",
+            lines: [createServiceLine({ description: "Airport Transfer", qty: "1", amount: "140.00" })],
+          }),
+        ],
+      }),
+    ],
+  };
+}
+
+export function createEmptyInvoiceData() {
+  return {
+    companyName: "",
+    customerName: "",
+    email: "",
+    phone: "",
+    invoiceDate: getCurrentInvoiceDate(),
+    documentLabel: "INVOICE",
+    invoiceTitle: "LeVince Chauffeur Service",
+    receiptNumber: "",
+    currency: "RM",
+    totalOverride: "",
+    notesTitle: DEFAULT_NOTES_TITLE,
+    paymentNotes: DEFAULT_PAYMENT_NOTES,
+    footerText: DEFAULT_FOOTER_TEXT,
+    headerLabels: { ...DEFAULT_HEADER_LABELS },
+    serviceGroups: [createServiceGroup()],
+  };
+}
+
+export function createServiceLine(values = {}) {
+  return {
+    id: values.id || newItemId(),
+    description: values.description || "",
+    qty: values.qty ?? "",
+    amount: values.amount || "",
+    isNote: Boolean(values.isNote),
+    isRemark: Boolean(values.isRemark),
+    isAdjustment: Boolean(values.isAdjustment),
+    isDetail: Boolean(values.isDetail),
+    isSpacer: Boolean(values.isSpacer),
+  };
+}
+
+export function createServiceDate(values = {}) {
+  const lines =
+    Array.isArray(values.lines) && values.lines.length
+      ? values.lines.map((line) => createServiceLine(line))
+      : [createServiceLine(values)];
+
+  return {
+    id: values.id || newItemId(),
+    date: values.date || values.serviceDate || "",
+    lines,
+  };
+}
+
+export function createServiceGroup(values = {}) {
+  const dates =
+    Array.isArray(values.dates) && values.dates.length
+      ? values.dates.map((dateGroup) => createServiceDate(dateGroup))
+      : [createServiceDate(values)];
+
+  return {
+    id: values.id || newItemId(),
+    heading: values.heading || values.serviceHeading || "Private Chauffeur Service",
+    dates,
+  };
+}
+
+function normaliseServiceGroups(data = {}) {
+  if (Array.isArray(data.serviceGroups) && data.serviceGroups.length) {
+    return data.serviceGroups.map((group) => createServiceGroup(group));
+  }
+
+  if (Array.isArray(data.items) && data.items.length) {
+    const dates = [];
+    data.items.forEach((item, index) => {
+      const date = item.serviceDate || (index === 0 ? data.serviceDate || "" : "");
+      let targetDate = dates[dates.length - 1];
+      if (!targetDate || targetDate.date !== date) {
+        targetDate = { id: newItemId(), date, lines: [] };
+        dates.push(targetDate);
+      }
+      targetDate.lines.push(createServiceLine(item));
+    });
+
+    return [
+      createServiceGroup({
+        heading: data.serviceHeading || "Private Chauffeur Service",
+        dates,
+      }),
+    ];
+  }
+
+  return [createServiceGroup({ heading: data.serviceHeading || "Private Chauffeur Service" })];
+}
+
+export function normaliseInvoiceData(data = {}) {
+  const { items, serviceDate, serviceHeading, serviceGroups, headerLabels, ...rest } = data || {};
+  return {
+    ...createEmptyInvoiceData(),
+    ...rest,
+    headerLabels: {
+      ...DEFAULT_HEADER_LABELS,
+      ...(headerLabels || {}),
+    },
+    serviceGroups: normaliseServiceGroups({ ...data, items, serviceDate, serviceHeading, serviceGroups }),
+  };
+}
+
+function buildTableRows(serviceGroups, font, descriptionMaxWidth = TABLE_DESCRIPTION_MAX_WIDTH) {
+  return serviceGroups.flatMap((group) => {
+    const rows = [];
+    const heading = String(group.heading || "").trim();
+    if (heading) rows.push({ type: "heading", text: heading });
+
+    group.dates.forEach((dateGroup) => {
+      const date = String(dateGroup.date || "").trim();
+      if (date) rows.push({ type: "date", text: date });
+      let previousLine = null;
+      let lineIndex = 0;
+      while (lineIndex < dateGroup.lines.length) {
+        const line = dateGroup.lines[lineIndex];
+        if (isSpacerLine(line)) {
+          rows.push({ type: "spacer" });
+          previousLine = line;
+          lineIndex += 1;
+          continue;
+        }
+        if (isRemarkLine(line)) {
+          const remarkLines = [];
+
+          while (lineIndex < dateGroup.lines.length && isRemarkLine(dateGroup.lines[lineIndex])) {
+            const noteLine = dateGroup.lines[lineIndex];
+            const descriptionLines = splitTextToWidth(
+              noteLine.description,
+              descriptionMaxWidth,
+              font,
+              TABLE_TEXT_SIZE,
+            );
+            remarkLines.push(...descriptionLines);
+            previousLine = noteLine;
+            lineIndex += 1;
+          }
+
+          if (remarkLines.length) {
+            rows.push({
+              type: "remark",
+              lines: remarkLines,
+              slots: Math.max(1, Math.ceil((remarkLines.length * REMARK_LINE_HEIGHT + 4) / TABLE_ROW_HEIGHT)),
+            });
+          }
+          continue;
+        }
+
+        const descriptionLines = splitTextToWidth(
+          line.description,
+          descriptionMaxWidth,
+          font,
+          TABLE_TEXT_SIZE,
+        );
+        rows.push({
+          type: "line",
+          line,
+          lines: descriptionLines,
+          text: descriptionLines[0] || "",
+          showValues: true,
+          slots: Math.max(1, Math.ceil((descriptionLines.length * REMARK_LINE_HEIGHT + 4) / TABLE_ROW_HEIGHT)),
+        });
+        previousLine = line;
+        lineIndex += 1;
+      }
+    });
+
+    return rows;
+  });
+}
+
+function getRowSlots(row) {
+  return row?.slots || 1;
+}
+
+function getRowsSlotCount(rows) {
+  return rows.reduce((sum, row) => sum + getRowSlots(row), 0);
+}
+
+function paginateRows(rows) {
+  if (!rows.length) return [[]];
+  const pages = [];
+  let currentPage = [];
+  let currentPageSlots = 0;
+  let index = 0;
+
+  function currentPageLimit() {
+    return pages.length === 0 ? TABLE_ROWS_PER_PAGE : TABLE_ROWS_PER_PAGE - 1;
+  }
+
+  function flushPage() {
+    if (currentPage.length) {
+      pages.push(currentPage);
+      currentPage = [];
+      currentPageSlots = 0;
+    }
+  }
+
+  function pushRow(row) {
+    const limit = currentPageLimit();
+    const rowSlots = getRowSlots(row);
+
+    if (row.type === "spacer" && currentPageSlots > limit - 3) {
+      flushPage();
+      return;
+    }
+
+    if (row.type === "date" && currentPageSlots > limit - 2) {
+      flushPage();
+    }
+
+    if (currentPageSlots > 0 && currentPageSlots + rowSlots > limit) {
+      flushPage();
+    }
+
+    if (row.type === "spacer" && currentPageSlots === 0) return;
+    currentPage.push(row);
+    currentPageSlots += rowSlots;
+  }
+
+  while (index < rows.length) {
+    const row = rows[index];
+    const isDateBlockStart =
+      row.type === "date" || (row.type === "spacer" && rows[index + 1]?.type === "date");
+
+    if (isDateBlockStart) {
+      let endIndex = index + 1;
+      while (endIndex < rows.length && rows[endIndex].type !== "spacer") endIndex += 1;
+      const block = rows.slice(index, endIndex);
+      const blockLength =
+        block[0]?.type === "spacer" && currentPageSlots === 0
+          ? getRowsSlotCount(block.slice(1))
+          : getRowsSlotCount(block);
+      const limit = currentPageLimit();
+
+      if (
+        currentPageSlots > 0 &&
+        blockLength <= limit &&
+        currentPageSlots + blockLength > limit
+      ) {
+        flushPage();
+      }
+
+      block.forEach(pushRow);
+      index = endIndex;
+      continue;
+    }
+
+    pushRow(row);
+    index += 1;
+  }
+
+  if (currentPage.length) pages.push(currentPage);
+  return pages;
+}
+
+export function getInvoiceSubtotal(data) {
+  return normaliseInvoiceData(data).serviceGroups.reduce(
+    (groupSum, group) =>
+      groupSum +
+      group.dates.reduce(
+        (dateSum, dateGroup) =>
+          dateSum + dateGroup.lines.reduce((lineSum, line) => lineSum + parseAmount(line.amount), 0),
+        0,
+      ),
+    0,
+  );
+}
+
+export function getInvoiceTotal(data) {
+  const invoiceData = normaliseInvoiceData(data);
+  const totalOverride = String(invoiceData.totalOverride || "").trim();
+  return totalOverride ? parseAmount(totalOverride) : getInvoiceSubtotal(invoiceData);
+}
+
+function isDescriptionOnlyLine(line) {
+  return Boolean(line.isNote) || Boolean(line.isRemark) || !String(line.amount || "").trim();
+}
+
+function isRemarkLine(line) {
+  return Boolean(line.isRemark) || Boolean(line.isNote);
+}
+
+function isDetailLine(line) {
+  return Boolean(line.isDetail);
+}
+
+function isAdjustmentLine(line) {
+  return Boolean(line.isAdjustment);
+}
+
+function isSpacerLine(line) {
+  return Boolean(line.isSpacer);
+}
+
+export function validateInvoice(data) {
+  const invoiceData = normaliseInvoiceData(data);
+  const missing = [];
+  const totalOverride = String(invoiceData.totalOverride || "").trim();
+  if (!String(invoiceData.customerName || "").trim()) missing.push("Customer name");
+  if (!String(invoiceData.invoiceDate || "").trim()) missing.push("Date");
+  if (!String(invoiceData.invoiceTitle || "").trim()) missing.push("Invoice title");
+  if (!String(invoiceData.receiptNumber || "").trim()) missing.push("Document number");
+  if (invoiceData.serviceGroups.some((group) => !String(group.heading || "").trim())) missing.push("Service heading");
+  if (
+    !invoiceData.serviceGroups.length ||
+    invoiceData.serviceGroups.some(
+      (group) => !group.dates.length || group.dates.some((dateGroup) => !String(dateGroup.date || "").trim()),
+    )
+  ) {
+    missing.push("Service date");
+  }
+  if (
+    invoiceData.serviceGroups.some((group) =>
+      group.dates.some(
+        (dateGroup) =>
+          !dateGroup.lines.length ||
+          dateGroup.lines.some((line) => !isSpacerLine(line) && !String(line.description || "").trim()),
+      ),
+    )
+  ) {
+    missing.push("Description");
+  }
+  if (
+    invoiceData.serviceGroups.some((group) =>
+      group.dates.some((dateGroup) =>
+        dateGroup.lines.some(
+          (line) =>
+            !isSpacerLine(line) &&
+            !isDescriptionOnlyLine(line) &&
+            !isAdjustmentLine(line) &&
+            !String(line.qty || "").trim(),
+        ),
+      ),
+    )
+  ) {
+    missing.push("Qty");
+  }
+  if (
+    invoiceData.serviceGroups.some((group) =>
+      group.dates.some((dateGroup) =>
+        dateGroup.lines.some((line) => {
+          if (isSpacerLine(line)) return false;
+          if (isDescriptionOnlyLine(line)) return false;
+          if (isAdjustmentLine(line)) return parseAmount(line.amount) === 0;
+          return parseAmount(line.amount) <= 0;
+        }),
+      ),
+    )
+  ) {
+    missing.push("Amount");
+  }
+  if (totalOverride && parseAmount(totalOverride) <= 0) missing.push("Total");
+  return [...new Set(missing)];
+}
+
+export async function generateInvoicePdf(data) {
+  const invoiceData = normaliseInvoiceData(data);
+  const invoiceSubtotal = getInvoiceSubtotal(invoiceData);
+  const invoiceTotal = getInvoiceTotal(invoiceData);
+
+  const logoBytes = await fetch(LOGO_URL).then((response) => {
+    if (!response.ok) throw new Error("Unable to load Levince logo asset.");
+    return response.arrayBuffer();
+  });
+
+  const pdfDoc = await PDFDocument.create();
+  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const helveticaLight = helvetica;
+  const logo = await pdfDoc.embedPng(logoBytes);
+  const tableLayout = getTableLayout(invoiceData.tableLayout);
+  const tableRows = buildTableRows(invoiceData.serviceGroups, helvetica, tableLayout.descriptionMaxWidth);
+  const pageRows = paginateRows(tableRows);
+  const repeatedHeading = String(invoiceData.serviceGroups[0]?.heading || "").trim();
+
+  function drawInvoicePage(page, rowsForPage, subtotal, total, includeTotal) {
+  page.drawRectangle({ x: 0, y: 0, width: 595.28, height: 841.89, color: white });
+  page.drawImage(logo, {
+    x: 242,
+    y: 753,
+    width: 111,
+    height: 60,
+  });
+
+  const headerX = 211.36092;
+  const headerMaxWidth = 325;
+  const labelX = 60.69292;
+  const colonX = 204.69292;
+  const headerFontSize = 12;
+  const headerLineHeight = 12.5;
+  const headerRowGap = 18.9;
+  const headerRows = [
+    "companyName",
+    "customerName",
+    "email",
+    "phone",
+    "invoiceDate",
+    "invoiceTitle",
+  ];
+  let headerY = 727.2937;
+
+  for (const field of headerRows) {
+    const label = String(invoiceData.headerLabels?.[field] || DEFAULT_HEADER_LABELS[field] || "")
+      .trim()
+      .toUpperCase();
+    drawBoundedText(page, label, labelX, headerY, colonX - labelX - 8, helvetica, headerFontSize, { minSize: 7 });
+    page.drawText(":", { x: colonX, y: headerY, size: headerFontSize, font: helvetica, color: black });
+    const value = String(invoiceData[field] || "").trim();
+    let valueLineCount = 1;
+    if (field === "email") {
+      valueLineCount = value
+        ? drawWrappedText(page, value, headerX, headerY, headerMaxWidth, helvetica, headerFontSize, {
+            color: emailColor,
+            lineHeight: headerLineHeight,
+            maxLines: 2,
+          })
+        : 1;
+    } else if (value) {
+      valueLineCount = drawWrappedText(page, value, headerX, headerY, headerMaxWidth, helvetica, headerFontSize, {
+        lineHeight: headerLineHeight,
+        maxLines: 2,
+      });
+    }
+    headerY -= headerRowGap + Math.max(0, valueLineCount - 1) * headerLineHeight;
+  }
+
+  drawBoundedText(
+    page,
+    String(invoiceData.documentLabel || "INVOICE").trim().toUpperCase(),
+    56.69292,
+    599.9809,
+    126,
+    helveticaLight,
+    15,
+    { color: receiptRed, minSize: 8 },
+  );
+  drawBoundedText(page, String(invoiceData.receiptNumber || "").trim(), 56.69292, 578.4679, 104, helvetica, 15, {
+    color: receiptRed,
+    minSize: 8,
+  });
+
+  const tableHeaderX = 193.1103;
+  const tableHeaderY = 594.1902;
+  const tableRightX = 538.5871;
+  const tableLeftX = 197.2353;
+  const descMaxWidth = tableLayout.descriptionMaxWidth;
+  const descDividerX = tableLayout.descDividerX;
+  const amountDividerX = tableLayout.amountDividerX;
+  const currencyX = amountDividerX + 2;
+  const amountRightX = tableRightX - 1.5;
+  const firstRowY = 580.2609;
+  const currency = String(invoiceData.currency || "RM").trim() || "RM";
+
+  page.drawRectangle({
+    x: tableHeaderX,
+    y: tableHeaderY,
+    width: descDividerX - tableHeaderX,
+    height: 20.25,
+    color: tableRed,
+    borderColor: tableRed,
+    borderWidth: 0,
+  });
+  page.drawRectangle({
+    x: descDividerX,
+    y: tableHeaderY,
+    width: amountDividerX - descDividerX,
+    height: 20.25,
+    color: tableRed,
+    borderColor: tableRed,
+    borderWidth: 0,
+  });
+  page.drawRectangle({
+    x: amountDividerX,
+    y: tableHeaderY,
+    width: tableRightX - amountDividerX,
+    height: 20.25,
+    color: tableRed,
+    borderColor: tableRed,
+    borderWidth: 0,
+  });
+  drawCenteredBoundedText(page, "Description", tableHeaderX, descDividerX, 600.6258, helvetica, 10, {
+    color: white,
+  });
+  drawCenteredBoundedText(page, "Qty", descDividerX, amountDividerX, 600.6258, helvetica, 10, {
+    color: white,
+  });
+  drawCenteredBoundedText(page, "Amount", amountDividerX, tableRightX, 600.6258, helvetica, 10, {
+    color: white,
+  });
+
+  page.drawLine({
+    start: { x: descDividerX, y: tableHeaderY + 0.5 },
+    end: { x: descDividerX, y: tableHeaderY + 20.75 },
+    thickness: 0.25,
+    color: headerDividerGrey,
+  });
+  page.drawLine({
+    start: { x: amountDividerX, y: tableHeaderY + 0.5 },
+    end: { x: amountDividerX, y: tableHeaderY + 20.75 },
+    thickness: 0.25,
+    color: headerDividerGrey,
+  });
+
+  [descDividerX, amountDividerX].forEach((x) => {
+    page.drawLine({
+      start: { x, y: 177.5262 },
+      end: { x, y: 614.5959 },
+      thickness: 0.75,
+      color: lineGrey,
+      dashArray: [1.5, 1.5],
+    });
+  });
+
+  const boundarySlots = [];
+  let boundarySlotCursor = 0;
+  rowsForPage.forEach((row) => {
+    boundarySlotCursor += getRowSlots(row);
+    if (boundarySlotCursor <= TABLE_DASHED_BOUNDARIES) boundarySlots.push(boundarySlotCursor);
+  });
+  for (let slot = boundarySlotCursor + 1; slot <= TABLE_DASHED_BOUNDARIES; slot += 1) {
+    boundarySlots.push(slot);
+  }
+
+  [...new Set(boundarySlots)]
+    .sort((a, b) => a - b)
+    .forEach((slot) => {
+      const y = 573.5959 - (slot - 1) * TABLE_ROW_HEIGHT;
+      page.drawLine({
+        start: { x: 192.9853, y },
+        end: { x: tableRightX, y },
+        thickness: 0.75,
+        color: lineGrey,
+        dashArray: [1.5, 1.5],
+      });
+    });
+
+  let rowSlotCursor = 0;
+  rowsForPage.forEach((row) => {
+    const y = firstRowY - rowSlotCursor * TABLE_ROW_HEIGHT;
+    const rowSlots = getRowSlots(row);
+    rowSlotCursor += rowSlots;
+
+    if (row.type === "spacer") return;
+    if (row.type === "remark") {
+      row.lines.forEach((line, lineIndex) => {
+        page.drawText(line || "", {
+          x: tableLeftX,
+          y: y - lineIndex * REMARK_LINE_HEIGHT,
+          size: TABLE_TEXT_SIZE,
+          font: helvetica,
+          color: black,
+        });
+      });
+      return;
+    }
+    if (row.type === "heading") {
+      drawBoundedText(page, row.text, tableLeftX, y, descMaxWidth, helveticaBold, 10, { minSize: 7 });
+      return;
+    }
+    if (row.type === "date") {
+      drawBoundedText(page, row.text, tableLeftX, y, descMaxWidth, helvetica, 10, { minSize: 7 });
+      return;
+    }
+
+    const amount = parseAmount(row.line.amount);
+    const isDescriptionOnly = isDescriptionOnlyLine(row.line);
+    const isAdjustment = isAdjustmentLine(row.line);
+    const descriptionLines = Array.isArray(row.lines) && row.lines.length ? row.lines : [row.text || ""];
+    const rowMiddleOffset = ((rowSlots - 1) * TABLE_ROW_HEIGHT) / 2;
+    const descriptionLineOffset = ((descriptionLines.length - 1) * REMARK_LINE_HEIGHT) / 2;
+    const descriptionStartY = y - rowMiddleOffset + descriptionLineOffset;
+    const valueY = y - rowMiddleOffset;
+    descriptionLines.forEach((line, lineIndex) => {
+      page.drawText(line || "", {
+        x: tableLeftX,
+        y: descriptionStartY - lineIndex * REMARK_LINE_HEIGHT,
+        size: TABLE_TEXT_SIZE,
+        font: helvetica,
+        color: black,
+      });
+    });
+    if (row.showValues && !isDescriptionOnly) {
+      if (!isAdjustment) {
+        drawCenteredBoundedText(page, row.line.qty || "", descDividerX, amountDividerX, valueY, helvetica, 10, {
+          minSize: 7,
+        });
+      }
+      drawCurrencyAmount(page, amount, currency, valueY - 0.0101, helvetica, currencyX, amountRightX, { minSize: 7 });
+    }
+  });
+
+  const subtotalY = 205.7368;
+  const totalY = 184.8469;
+  page.drawLine({
+    start: { x: 192.6103, y: 219.9012 },
+    end: { x: tableRightX, y: 219.9012 },
+    thickness: 0.5,
+    color: black,
+  });
+  page.drawLine({
+    start: { x: 192.6103, y: 199.0262 },
+    end: { x: tableRightX, y: 199.0262 },
+    thickness: 0.5,
+    color: black,
+  });
+  page.drawLine({
+    start: { x: 192.6103, y: 178.0262 },
+    end: { x: tableRightX, y: 178.0262 },
+    thickness: 1,
+    color: black,
+  });
+
+  if (includeTotal) {
+    drawBoundedText(page, "Subtotal", 399.9172, subtotalY, amountDividerX - 399.9172 - 2, helvetica, 10, {
+      minSize: 7,
+    });
+    drawCurrencyAmount(page, subtotal, currency, subtotalY, helvetica, currencyX, amountRightX, { minSize: 7 });
+    drawBoundedText(page, "Total", 399.9172, totalY, amountDividerX - 399.9172 - 2, helveticaBold, 10, {
+      minSize: 7,
+    });
+    drawCurrencyAmount(page, total, currency, totalY, helveticaBold, currencyX, amountRightX, { minSize: 7 });
+  }
+
+  const notesTitle = String(invoiceData.notesTitle || "").trim();
+  if (notesTitle) {
+    drawBoundedText(page, notesTitle, 60.69292, 153.9324, 470, helveticaBold, 10, { minSize: 7 });
+  }
+  let notesY = 130.5904;
+  splitEditableLines(invoiceData.paymentNotes).forEach((line) => {
+    const lineCount = drawWrappedText(page, line, 60.69292, notesY, 470, helvetica, 10, { lineHeight: 12 });
+    notesY -= Math.max(1, lineCount) * 12;
+  });
+  drawBoundedText(page, invoiceData.footerText, 56.69292, 42.51964, 482, helveticaBold, 9, {
+    color: footerGrey,
+    minSize: 7,
+  });
+  }
+
+  pageRows.forEach((rowsForPage, pageIndex) => {
+    const page = pdfDoc.addPage([595.28, 841.89]);
+    const drawableRows =
+      pageIndex > 0 && repeatedHeading
+        ? [{ type: "heading", text: repeatedHeading }, ...rowsForPage]
+        : rowsForPage;
+    drawInvoicePage(
+      page,
+      drawableRows,
+      invoiceTotal,
+      invoiceTotal,
+      pageIndex === pageRows.length - 1,
+    );
+  });
+
+  const pdfBytes = await pdfDoc.save();
+  const blob = new Blob([pdfBytes], { type: "application/pdf" });
+  const filename = `Levince Chauffeur ${cleanFilename(invoiceData.receiptNumber)}.pdf`;
+  return { blob, filename };
+}
