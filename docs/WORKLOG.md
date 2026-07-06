@@ -32,6 +32,7 @@ Create a GitHub-friendly invoice workflow website that:
 - User clarified that New Invoice must use the exact local `lv-inv` generator. The project is now React/Vite and imports the original generator source from `/Users/chloe/Documents/levince- codex/lv-inv`.
 - Google Sheet backend created: `https://docs.google.com/spreadsheets/d/1gMMS_y1z_2wIMUa5fiZwyCA2l0p3KJB64LXx_CBUE78/edit`.
 - UX simplified: technical connection fields were removed from the top bar and moved into Setup with friendlier labels.
+- Apps Script backend was compressed from 613 lines to 119 lines so it is easier to paste into Google Apps Script.
 
 ## Important Decisions
 - Use Vite/React because the original invoice generator is React/Vite and should stay visually/functionally the same.
@@ -61,6 +62,7 @@ Create a GitHub-friendly invoice workflow website that:
 - Verified GitHub Pages site responds with HTTP 200.
 - Simplified workflow setup UI and ran Vite build successfully.
 - Ran headless Chrome smoke test; confirmed New Invoice top bar has no connection inputs and Setup has friendlier labels without "Apps Script".
+- Replaced `apps-script/Code.gs` with a compact 119-line version and ran a syntax check through Node stdin.
 
 ## Exact Next Steps
 1. Deploy Apps Script manually from `apps-script/Code.gs`.
