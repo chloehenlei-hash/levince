@@ -7,6 +7,7 @@ import {
   RefreshCcw,
   RotateCcw,
   Trash2,
+  UploadCloud,
 } from "lucide-react";
 import {
   createEmptyInvoiceData,
@@ -90,8 +91,10 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "" }) {
   const [error, setError] = useState("");
   const [quickPasteText, setQuickPasteText] = useState("");
   const [quickPasteStatus, setQuickPasteStatus] = useState("");
+  const [isPdfDragOver, setIsPdfDragOver] = useState(false);
   const [tableLayout, setTableLayout] = useState("normal");
   const lastPreviewUrl = useRef("");
+  const pdfInputRef = useRef(null);
   const generatedInvoiceRef = useRef(null);
   const lastAutoSavedKey = useRef("");
 
@@ -115,16 +118,7 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "" }) {
       const file = getPdfFileFromPaste(event);
       if (!file) return;
       event.preventDefault();
-      setQuickPasteStatus("Reading PDF...");
-      try {
-        const parsed = await parsePastedPdfInvoice(file, invoice);
-        setInvoice(withDefaultPaymentNotes(parsed));
-        clearGeneratedOutput();
-        setError("");
-        setQuickPasteStatus("PDF applied. Review the fields, then generate again.");
-      } catch (pasteError) {
-        setQuickPasteStatus(pasteError.message || "Unable to read this PDF.");
-      }
+      await applyPdfFile(file);
     }
 
     window.addEventListener("paste", handlePaste);
@@ -133,6 +127,33 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "" }) {
 
   function updateInvoice(field, value) {
     setInvoice((current) => ({ ...current, [field]: value }));
+  }
+
+  async function applyPdfFile(file) {
+    if (!file) return;
+    setQuickPasteStatus("Reading PDF...");
+    try {
+      const parsed = await parsePastedPdfInvoice(file, invoice);
+      setInvoice(withDefaultPaymentNotes(parsed));
+      clearGeneratedOutput();
+      setError("");
+      setQuickPasteStatus("PDF applied. Review the fields, then generate again.");
+    } catch (pasteError) {
+      setQuickPasteStatus(pasteError.message || "Unable to read this PDF.");
+    }
+  }
+
+  function handlePdfDrop(event) {
+    event.preventDefault();
+    setIsPdfDragOver(false);
+    const file = Array.from(event.dataTransfer?.files || []).find(
+      (item) => item.type === "application/pdf" || /\.pdf$/i.test(item.name || ""),
+    );
+    applyPdfFile(file);
+  }
+
+  function choosePdfFile() {
+    pdfInputRef.current?.click();
   }
 
   function updateHeaderLabel(field, value) {
@@ -433,6 +454,48 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "" }) {
       <div className="workspace">
         <form className="editor" onSubmit={(event) => event.preventDefault()}>
           <Section title="Quick Paste">
+            <input
+              ref={pdfInputRef}
+              className="pdf-file-input"
+              type="file"
+              accept="application/pdf"
+              onChange={(event) => {
+                applyPdfFile(event.target.files?.[0]);
+                event.target.value = "";
+              }}
+            />
+            <div
+              className={`pdf-paste-zone ${isPdfDragOver ? "is-drag-over" : ""}`}
+              role="button"
+              tabIndex={0}
+              onClick={choosePdfFile}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") choosePdfFile();
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setIsPdfDragOver(true);
+              }}
+              onDragLeave={() => setIsPdfDragOver(false)}
+              onDrop={handlePdfDrop}
+            >
+              <UploadCloud aria-hidden="true" />
+              <div>
+                <strong>Paste PDF here</strong>
+                <span>Copy a PDF from WhatsApp, click this box, then press Cmd + V.</span>
+              </div>
+              <button
+                type="button"
+                className="secondary-button compact-button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  choosePdfFile();
+                }}
+              >
+                Choose PDF
+              </button>
+              {quickPasteStatus ? <em>{quickPasteStatus}</em> : null}
+            </div>
             <label className="field paste-field">
               <span>Invoice details</span>
               <textarea

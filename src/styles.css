@@ -263,6 +263,70 @@ textarea:focus {
   margin-bottom: 8px;
 }
 
+.pdf-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pdf-paste-zone {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1.5px dashed rgba(167, 25, 29, 0.42);
+  border-radius: 8px;
+  background: #fff8f6;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.pdf-paste-zone:hover,
+.pdf-paste-zone:focus,
+.pdf-paste-zone.is-drag-over {
+  border-color: var(--brand);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(167, 25, 29, 0.1);
+  outline: none;
+}
+
+.pdf-paste-zone > svg {
+  width: 28px;
+  height: 28px;
+  color: var(--brand);
+}
+
+.pdf-paste-zone strong,
+.pdf-paste-zone span,
+.pdf-paste-zone em {
+  display: block;
+}
+
+.pdf-paste-zone strong {
+  font-size: 1rem;
+}
+
+.pdf-paste-zone span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.pdf-paste-zone em {
+  grid-column: 2 / -1;
+  color: var(--brand);
+  font-size: 0.86rem;
+  font-style: normal;
+  font-weight: 720;
+}
+
 .notes-field {
   margin-top: 14px;
 }
@@ -635,11 +699,20 @@ textarea:focus {
 
   .grid.two,
   .particular-row,
+  .pdf-paste-zone,
   .service-group-header,
   .service-date-header,
   .line-head,
   .line-row {
     grid-template-columns: 1fr;
+  }
+
+  .pdf-paste-zone > svg {
+    display: none;
+  }
+
+  .pdf-paste-zone em {
+    grid-column: auto;
   }
 
   .line-head {
