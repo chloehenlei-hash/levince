@@ -1,40 +1,23 @@
-const STORAGE_KEY = "levinceInvoiceWorkflowConnection";
+const BACKEND_URL = "";
+const SYSTEM_USER = "Levince";
 
-export function readConnection() {
-  try {
-    return {
-      apiUrl: "",
-      pin: "",
-      user: "Chloe",
-      ...JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"),
-    };
-  } catch {
-    return {
-      apiUrl: "",
-      pin: "",
-      user: "Chloe",
-    };
-  }
+export function isWorkflowReady() {
+  return BACKEND_URL.startsWith("https://script.google.com/");
 }
 
-export function saveConnection(connection) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(connection));
-}
-
-export async function callWorkflowApi(connection, action, payload = {}) {
-  if (!connection.apiUrl) {
-    throw new Error("System is not connected yet. Open Setup once and paste the private connection link.");
+export async function callWorkflowApi(action, payload = {}) {
+  if (!isWorkflowReady()) {
+    throw new Error("Google Sheet connection is not ready yet.");
   }
 
-  const response = await fetch(connection.apiUrl, {
+  const response = await fetch(BACKEND_URL, {
     method: "POST",
     headers: {
       "Content-Type": "text/plain;charset=utf-8",
     },
     body: JSON.stringify({
       action,
-      pin: connection.pin,
-      user: connection.user,
+      user: SYSTEM_USER,
       ...payload,
     }),
   });

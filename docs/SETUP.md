@@ -13,34 +13,26 @@ This project uses a Google Sheet as the database. The required tabs are:
 
 The `SQL Export` tab is where paid invoices are prepared in the SQL Account import template column order.
 
-Created backend sheet:
+Backend sheet:
 
 [Levince Invoice Workflow Database](https://docs.google.com/spreadsheets/d/1gMMS_y1z_2wIMUa5fiZwyCA2l0p3KJB64LXx_CBUE78/edit)
 
 ## 2. Apps Script Backend
 
+This is a one-time hidden connection. After it is added to the code, the live website connects by itself.
+
 1. Open the Google Sheet database.
 2. Go to `Extensions` -> `Apps Script`.
 3. Paste the contents of `apps-script/Code.gs`.
-4. In Apps Script, open `Project Settings`.
-5. Add a Script Property:
-   - Property: `APP_PIN`
-   - Value: choose a private PIN shared only by Chloe and Desmond.
-6. Click `Deploy` -> `New deployment`.
-7. Select type `Web app`.
-8. Execute as: `Me`.
-9. Who has access: only the users you trust, or anyone with the link if Google login blocks the website.
-10. Copy the Web App URL ending with `/exec`.
+4. Click `Deploy` -> `New deployment`.
+5. Select type `Web app`.
+6. Execute as: `Me`.
+7. Who has access: use the access option that works for the hosted website.
+8. Copy the Web App URL ending with `/exec`.
+9. Paste that URL into `BACKEND_URL` inside `src/workflowApi.js`.
+10. Push the code. The website will then connect automatically.
 
-## 3. Website Setup
-
-1. Run the local dev server with `npm run dev`, or host the project through GitHub Pages.
-2. In the website Setup panel, paste the Apps Script Web App URL.
-3. Select user: `Chloe` or `Desmond`.
-4. Enter the shared PIN.
-5. Click `Save Connection`, then `Load Invoices`.
-
-## 4. GitHub Pages
+## 3. GitHub Pages
 
 If this repository is pushed to GitHub:
 
@@ -50,7 +42,7 @@ If this repository is pushed to GitHub:
 4. Push to the `main` branch.
 5. Open the Pages URL after GitHub finishes deploying.
 
-## 5. Daily SQL Routine
+## 4. Daily SQL Routine
 
 1. Chloe creates invoice and sends PDF to customer.
 2. Desmond marks invoice as `Paid` after receiving payment.

@@ -1,5 +1,4 @@
 const SPREADSHEET_ID = "1gMMS_y1z_2wIMUa5fiZwyCA2l0p3KJB64LXx_CBUE78";
-const PIN_KEY = "APP_PIN";
 const T = { inv: "Invoices", item: "Invoice Items", pay: "Payments", sql: "SQL Export", set: "Settings", log: "Logs" };
 const IH = ["Invoice ID","Internal Invoice No","Document Type","Status","SQL Status","Customer Name","SQL Customer Code","Customer Email","Customer Phone","Billing Address","Invoice Date","Due Date","Currency","Subtotal","Discount","Tax","Total","Notes","Terms","TIN","ID Type","ID No","PDF File URL","Created By","Created At","Updated At","Sent At","Paid At","Payment Ref","Payment Proof URL","Uploaded To SQL At","Uploaded By","Cancelled At","Cancelled Reason"];
 const ITH = ["Item ID","Invoice ID","Internal Invoice No","Sequence","Item Code","Description","Quantity","UOM","Unit Price","Discount","Tax Code","Tax Amount","Amount","Account Code","Created At","Updated At"];
@@ -12,7 +11,7 @@ function doGet() { return json({ ok: true, app: "Levince Invoice Workflow" }); }
 function doPost(e) {
   try {
     const q = JSON.parse((e.postData && e.postData.contents) || "{}");
-    checkPin(q); setup();
+    setup();
     const map = { setup: () => ({ ok: true }), listInvoices, createInvoice, markPaid, markUploaded, cancelInvoice, refreshSqlExport };
     if (!map[q.action]) throw new Error("Unknown action: " + q.action);
     return json(map[q.action](q));
@@ -21,11 +20,6 @@ function doPost(e) {
 
 function json(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 function ss() { return SpreadsheetApp.openById(SPREADSHEET_ID); }
-function checkPin(q) {
-  const expected = PropertiesService.getScriptProperties().getProperty(PIN_KEY);
-  if (!expected) throw new Error("Private PIN is not set.");
-  if (String(q.pin || "") !== String(expected)) throw new Error("Invalid PIN.");
-}
 function setup() {
   ensure(T.inv, IH); ensure(T.item, ITH); ensure(T.pay, PH); ensure(T.sql, SQLH);
   ensure(T.set, ["Key","Value","Notes"]); ensure(T.log, LH);

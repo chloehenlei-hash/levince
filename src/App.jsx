@@ -1,13 +1,12 @@
 import { useMemo, useState } from "react";
-import { CheckCircle2, ClipboardList, Database, FilePlus2, Settings, UploadCloud } from "lucide-react";
+import { CheckCircle2, ClipboardList, Database, FilePlus2, UploadCloud } from "lucide-react";
 import InvoiceGenerator from "./InvoiceGenerator.jsx";
-import { callWorkflowApi, readConnection, saveConnection } from "./workflowApi.js";
+import { callWorkflowApi } from "./workflowApi.js";
 
 const NAV_ITEMS = [
   { key: "new", label: "New Invoice", icon: FilePlus2 },
   { key: "invoices", label: "Invoices", icon: ClipboardList },
   { key: "sql", label: "SQL Queue", icon: Database },
-  { key: "setup", label: "Setup", icon: Settings },
 ];
 
 function money(value, currency = "RM") {
@@ -119,7 +118,6 @@ function rowsToTsv(rows) {
 
 export default function App() {
   const [view, setView] = useState("new");
-  const [connection, setConnection] = useState(readConnection);
   const [message, setMessage] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
   const [invoices, setInvoices] = useState([]);
@@ -132,20 +130,10 @@ export default function App() {
     [invoices],
   );
 
-  function updateConnection(field, value) {
-    setConnection((current) => ({ ...current, [field]: value }));
-  }
-
-  function persistConnection() {
-    saveConnection(connection);
-    setMessage("Connection saved in this browser.");
-  }
-
   async function loadInvoices() {
     try {
-      saveConnection(connection);
       setMessage("Loading invoices...");
-      const data = await callWorkflowApi(connection, "listInvoices");
+      const data = await callWorkflowApi("listInvoices");
       setInvoices(data.invoices || []);
       setItems(data.items || []);
       setMessage(`Loaded ${(data.invoices || []).length} invoice(s).`);
@@ -166,7 +154,7 @@ export default function App() {
         return;
       }
       setSaveStatus("Saving...");
-      await callWorkflowApi(connection, "createInvoice", mapped);
+      await callWorkflowApi("createInvoice", mapped);
       setSaveStatus(`Saved ${mapped.invoice.invoiceNo} to workflow.`);
       await loadInvoices();
     } catch (error) {
@@ -178,7 +166,7 @@ export default function App() {
     const paymentRef = window.prompt("Payment reference / note:");
     if (paymentRef === null) return;
     try {
-      await callWorkflowApi(connection, "markPaid", {
+      await callWorkflowApi("markPaid", {
         invoiceId,
         paymentDate: new Date().toISOString().slice(0, 10),
         paymentRef,
@@ -194,7 +182,7 @@ export default function App() {
   async function markUploaded(invoiceId) {
     if (!window.confirm("Mark this invoice as uploaded to SQL?")) return;
     try {
-      await callWorkflowApi(connection, "markUploaded", { invoiceId });
+      await callWorkflowApi("markUploaded", { invoiceId });
       await loadInvoices();
       setMessage("Invoice marked as uploaded to SQL.");
     } catch (error) {
@@ -204,7 +192,7 @@ export default function App() {
 
   async function refreshSqlExport() {
     try {
-      const data = await callWorkflowApi(connection, "refreshSqlExport");
+      const data = await callWorkflowApi("refreshSqlExport");
       setSqlRows(data.rows || []);
       setMessage(`Prepared ${(data.rows || []).length} SQL row(s).`);
     } catch (error) {
@@ -362,59 +350,6 @@ export default function App() {
             <span>SQL template rows</span>
             <textarea readOnly value={rowsToTsv(sqlRows)} />
           </label>
-        </main>
-      ) : null}
-
-      {view === "setup" ? (
-        <main className="app-shell workflow-page readable">
-          <p className="brand-label">Setup</p>
-          <h1>Setup</h1>
-          <p>
-            This page is only for the one-time connection. Chloe can set it once in each browser; daily invoice work
-            happens in New Invoice, Invoices, and SQL Queue.
-          </p>
-          <div className="workflow-connection setup-connection">
-            <label className="field">
-              <span>Private connection link</span>
-              <input
-                aria-label="Private connection link"
-                value={connection.apiUrl}
-                placeholder="Paste the private connection link here"
-                onChange={(event) => updateConnection("apiUrl", event.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Current user</span>
-              <select
-                aria-label="Current user"
-                value={connection.user}
-                onChange={(event) => updateConnection("user", event.target.value)}
-              >
-                <option value="Chloe">Chloe</option>
-                <option value="Desmond">Desmond</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>Private PIN</span>
-              <input
-                aria-label="Private PIN"
-                value={connection.pin}
-                type="password"
-                placeholder="PIN"
-                onChange={(event) => updateConnection("pin", event.target.value)}
-              />
-            </label>
-            <button type="button" className="secondary-button" onClick={persistConnection}>
-              Save Setup
-            </button>
-            <button type="button" className="primary-button" onClick={loadInvoices}>
-              Test Connection
-            </button>
-          </div>
-          <p>
-            Current user is only for the record, so the system knows whether Chloe created the invoice or Desmond marked
-            it paid. The PIN is a small lock so random visitors cannot update your records.
-          </p>
         </main>
       ) : null}
     </>

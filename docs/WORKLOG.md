@@ -31,13 +31,15 @@ Create a GitHub-friendly invoice workflow website that:
 - Existing online invoice generator is a bundled static React/Vite site, so this project recreates the workflow in maintainable source files instead of editing the minified bundle.
 - User clarified that New Invoice must use the exact local `lv-inv` generator. The project is now React/Vite and imports the original generator source from `/Users/chloe/Documents/levince- codex/lv-inv`.
 - Google Sheet backend created: `https://docs.google.com/spreadsheets/d/1gMMS_y1z_2wIMUa5fiZwyCA2l0p3KJB64LXx_CBUE78/edit`.
-- UX simplified: technical connection fields were removed from the top bar and moved into Setup with friendlier labels.
-- Apps Script backend was compressed from 613 lines to 119 lines so it is easier to paste into Google Apps Script.
+- UX simplified again: Setup, PIN, Test Connection, user selector, and manual connection fields were removed from the website.
+- Apps Script backend was compressed and no longer checks a PIN. It is currently 113 lines.
+- Current limitation: the Apps Script Web App URL still has to be created once and pasted into `src/workflowApi.js` as the hidden `BACKEND_URL`; after that the website connects automatically.
 
 ## Important Decisions
 - Use Vite/React because the original invoice generator is React/Vite and should stay visually/functionally the same.
 - Deploy to GitHub Pages through GitHub Actions, building the Vite `dist` output.
 - Use Google Apps Script as the backend API so the frontend does not directly expose Google Sheet edit access.
+- Keep the Google Sheet connection hidden in code instead of asking Chloe or Desmond to set it up in the website.
 - Use Google Sheet as the database.
 - Use Chloe's internal invoice number for the customer-facing payment request.
 - Let SQL Account generate the official SQL invoice number.
@@ -63,10 +65,12 @@ Create a GitHub-friendly invoice workflow website that:
 - Simplified workflow setup UI and ran Vite build successfully.
 - Ran headless Chrome smoke test; confirmed New Invoice top bar has no connection inputs and Setup has friendlier labels without "Apps Script".
 - Replaced `apps-script/Code.gs` with a compact 119-line version and ran a syntax check through Node stdin.
+- Removed Setup, PIN, Test Connection, user selector, and all manual website connection state.
+- Ran Vite production build successfully after removing manual setup.
+- Ran syntax check for the compact `apps-script/Code.gs`.
 
 ## Exact Next Steps
 1. Deploy Apps Script manually from `apps-script/Code.gs`.
-2. Set Apps Script Script Property `APP_PIN`.
-3. Paste the deployed backend URL into Setup as the private connection link.
+2. Paste the deployed Apps Script Web App URL into `BACKEND_URL` in `src/workflowApi.js`.
+3. Push the updated code to GitHub Pages.
 4. Create the first test invoice, click `Save to Workflow`, mark it paid, and refresh SQL export.
-5. Review whether Setup copy should be in Chinese or English for Desmond.
