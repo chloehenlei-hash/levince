@@ -23,7 +23,7 @@ export function saveConnection(connection) {
 
 export async function callWorkflowApi(connection, action, payload = {}) {
   if (!connection.apiUrl) {
-    throw new Error("Paste the Apps Script Web App URL first.");
+    throw new Error("System is not connected yet. Open Setup once and paste the private connection link.");
   }
 
   const response = await fetch(connection.apiUrl, {

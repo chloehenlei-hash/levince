@@ -245,35 +245,6 @@ export default function App() {
             </button>
           ))}
         </div>
-        <div className="workflow-connection">
-          <input
-            aria-label="Apps Script URL"
-            value={connection.apiUrl}
-            placeholder="Apps Script Web App URL"
-            onChange={(event) => updateConnection("apiUrl", event.target.value)}
-          />
-          <select
-            aria-label="User"
-            value={connection.user}
-            onChange={(event) => updateConnection("user", event.target.value)}
-          >
-            <option value="Chloe">Chloe</option>
-            <option value="Desmond">Desmond</option>
-          </select>
-          <input
-            aria-label="PIN"
-            value={connection.pin}
-            type="password"
-            placeholder="PIN"
-            onChange={(event) => updateConnection("pin", event.target.value)}
-          />
-          <button type="button" className="secondary-button" onClick={persistConnection}>
-            Save
-          </button>
-          <button type="button" className="primary-button" onClick={loadInvoices}>
-            Load
-          </button>
-        </div>
         {message ? <p className="workflow-message">{message}</p> : null}
       </div>
 
@@ -288,12 +259,15 @@ export default function App() {
               <p className="brand-label">Workflow</p>
               <h1>Invoices</h1>
             </div>
-            <select value={filter} onChange={(event) => setFilter(event.target.value)}>
-              <option value="active">Active</option>
-              <option value="paid">Paid Queue</option>
-              <option value="uploaded">Uploaded</option>
-              <option value="all">All</option>
-            </select>
+            <div className="workflow-row-actions">
+              <select value={filter} onChange={(event) => setFilter(event.target.value)}>
+                <option value="active">Active</option>
+                <option value="paid">Paid Queue</option>
+                <option value="uploaded">Uploaded</option>
+                <option value="all">All</option>
+              </select>
+              <button type="button" className="secondary-button" onClick={loadInvoices}>Refresh</button>
+            </div>
           </header>
           <div className="workflow-stats">
             <div><span>Active</span><strong>{invoices.filter((row) => row.Status !== "Uploaded to SQL").length}</strong></div>
@@ -352,6 +326,7 @@ export default function App() {
               <h1>SQL Queue</h1>
             </div>
             <div className="workflow-row-actions">
+              <button type="button" className="secondary-button" onClick={loadInvoices}>Refresh Invoices</button>
               <button type="button" className="primary-button" onClick={refreshSqlExport}>Refresh SQL Export</button>
               <button type="button" className="secondary-button" onClick={copySqlRows}>Copy Rows</button>
             </div>
@@ -395,12 +370,50 @@ export default function App() {
           <p className="brand-label">Setup</p>
           <h1>Setup</h1>
           <p>
-            Deploy <code>apps-script/Code.gs</code> in the Google Sheet backend, set the <code>APP_PIN</code> script
-            property, then paste the Web App URL above.
+            This page is only for the one-time connection. Chloe can set it once in each browser; daily invoice work
+            happens in New Invoice, Invoices, and SQL Queue.
           </p>
+          <div className="workflow-connection setup-connection">
+            <label className="field">
+              <span>Private connection link</span>
+              <input
+                aria-label="Private connection link"
+                value={connection.apiUrl}
+                placeholder="Paste the private connection link here"
+                onChange={(event) => updateConnection("apiUrl", event.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span>Current user</span>
+              <select
+                aria-label="Current user"
+                value={connection.user}
+                onChange={(event) => updateConnection("user", event.target.value)}
+              >
+                <option value="Chloe">Chloe</option>
+                <option value="Desmond">Desmond</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Private PIN</span>
+              <input
+                aria-label="Private PIN"
+                value={connection.pin}
+                type="password"
+                placeholder="PIN"
+                onChange={(event) => updateConnection("pin", event.target.value)}
+              />
+            </label>
+            <button type="button" className="secondary-button" onClick={persistConnection}>
+              Save Setup
+            </button>
+            <button type="button" className="primary-button" onClick={loadInvoices}>
+              Test Connection
+            </button>
+          </div>
           <p>
-            The invoice generator is the original Levince generator. The workflow layer only records the saved invoice,
-            payment status, and SQL upload status.
+            Current user is only for the record, so the system knows whether Chloe created the invoice or Desmond marked
+            it paid. The PIN is a small lock so random visitors cannot update your records.
           </p>
         </main>
       ) : null}

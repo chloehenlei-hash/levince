@@ -24,11 +24,14 @@ Create a GitHub-friendly invoice workflow website that:
 
 ## Latest Status
 - Project folder is new and local path is `/Users/chloe/Documents/New project/levince-invoice-workflow`.
-- Project folder is now a git repository on branch `main`; no commit has been created yet.
-- No GitHub remote is configured yet.
+- Project folder is a git repository on branch `main`.
+- GitHub remote is `https://github.com/chloehenlei-hash/levince.git`.
+- Initial version has been pushed and GitHub Pages deploy succeeded.
+- Public site: `https://chloehenlei-hash.github.io/levince/`.
 - Existing online invoice generator is a bundled static React/Vite site, so this project recreates the workflow in maintainable source files instead of editing the minified bundle.
 - User clarified that New Invoice must use the exact local `lv-inv` generator. The project is now React/Vite and imports the original generator source from `/Users/chloe/Documents/levince- codex/lv-inv`.
 - Google Sheet backend created: `https://docs.google.com/spreadsheets/d/1gMMS_y1z_2wIMUa5fiZwyCA2l0p3KJB64LXx_CBUE78/edit`.
+- UX simplified: technical connection fields were removed from the top bar and moved into Setup with friendlier labels.
 
 ## Important Decisions
 - Use Vite/React because the original invoice generator is React/Vite and should stay visually/functionally the same.
@@ -55,10 +58,13 @@ Create a GitHub-friendly invoice workflow website that:
 - Ran headless Chrome smoke test against the migrated app; verified `Invoice Generator`, `Quick Paste`, `Generate PDF`, and `Save to Workflow`.
 - Generated a test PDF preview successfully: `Levince Chauffeur 104247.pdf`.
 - Checked GitHub CLI availability; `gh` is not installed, so GitHub upload should use manual repo creation plus `git remote add`.
+- Verified GitHub Pages site responds with HTTP 200.
+- Simplified workflow setup UI and ran Vite build successfully.
+- Ran headless Chrome smoke test; confirmed New Invoice top bar has no connection inputs and Setup has friendlier labels without "Apps Script".
 
 ## Exact Next Steps
 1. Deploy Apps Script manually from `apps-script/Code.gs`.
 2. Set Apps Script Script Property `APP_PIN`.
-3. Paste the deployed Apps Script Web App URL into the website setup strip at `http://127.0.0.1:5173/`.
+3. Paste the deployed backend URL into Setup as the private connection link.
 4. Create the first test invoice, click `Save to Workflow`, mark it paid, and refresh SQL export.
-5. Create an empty GitHub repository, add it as `origin`, commit the project, and push `main`.
+5. Review whether Setup copy should be in Chinese or English for Desmond.
