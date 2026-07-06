@@ -911,6 +911,14 @@ textarea:focus {
   color: #237a4b;
 }
 
+.paid-check-button.is-paid,
+.paid-check-button.is-paid:disabled {
+  border-color: #b7e2c9;
+  background: #e8f6ee;
+  color: #237a4b;
+  opacity: 1;
+}
+
 .workflow-status.sent {
   background: #edf3ff;
   color: #215db8;

@@ -41,6 +41,7 @@ Create a GitHub-friendly invoice workflow website that:
 - User added SQL customer import requirement: before importing invoices, new customers must be exported/imported into SQL using the `Import Customer.xlsx` template. Previously uploaded SQL customers should be archived and skipped in future customer exports.
 - `Import Customer.xlsx` was inspected. Customer template sheet is `Customer`, header row is row 5, 48 columns from `CODE(10)` through `_EMAIL(200)`. Country code reference is on `Country`.
 - Backend now has `SQL Customers` archive and `Customer Export` output tabs. Customer rows are generated before invoice rows; customers can be marked uploaded to SQL.
+- Invoices page was simplified: it only has a Paid check action. Once marked paid, the invoice leaves the Active list but remains recorded in Google Sheet and appears in SQL Queue.
 
 ## Important Decisions
 - Use Vite/React because the original invoice generator is React/Vite and should stay visually/functionally the same.
@@ -87,8 +88,10 @@ Create a GitHub-friendly invoice workflow website that:
 - Local iframe smoke test timed out because Apps Script wraps HtmlService output in an inner iframe. Updated Apps Script response to call `window.top.postMessage(...)`.
 - After redeploy, backend `refreshSqlExport` returned both customer and invoice headers successfully.
 - Local browser smoke test passed: SQL Queue -> Refresh SQL Export showed `Prepared 0 customer(s), 0 invoice row(s).`
+- Simplified Invoices page actions: removed SQL upload action from the invoice row, removed payment-ref prompt, made Active exclude Paid invoices, and added an Invoices Uploaded action to SQL Queue.
+- Ran Vite production build successfully and browser smoke test confirmed Active hides paid invoice `104300` while Paid Queue still shows it.
 
 ## Exact Next Steps
-1. Push updated frontend/backend helper to GitHub Pages.
-2. Test the live GitHub Pages SQL Queue refresh.
-3. Create the first paid test invoice, refresh SQL export, verify customer rows appear first, mark customers uploaded, then import invoice rows.
+1. Push simplified Invoices page to GitHub Pages.
+2. Test live Invoices page: Active should hide paid invoices and row actions should only show Paid.
+3. Use SQL Queue for Customer Uploaded and Invoices Uploaded archival.

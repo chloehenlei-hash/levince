@@ -165,28 +165,33 @@ export default function App() {
   }
 
   async function markPaid(invoiceId) {
-    const paymentRef = window.prompt("Payment reference / note:");
-    if (paymentRef === null) return;
     try {
       await callWorkflowApi("markPaid", {
         invoiceId,
         paymentDate: new Date().toISOString().slice(0, 10),
-        paymentRef,
+        paymentRef: "",
         proofUrl: "",
       });
       await loadInvoices();
-      setMessage("Invoice marked as paid.");
+      setMessage("Paid recorded. Invoice moved to SQL Queue.");
     } catch (error) {
       setMessage(error.message);
     }
   }
 
-  async function markUploaded(invoiceId) {
-    if (!window.confirm("Mark this invoice as uploaded to SQL?")) return;
+  async function markInvoicesUploaded() {
+    if (!paidQueue.length) {
+      setMessage("No paid invoices waiting for SQL.");
+      return;
+    }
+    if (!window.confirm("Mark paid invoices as uploaded to SQL?")) return;
     try {
-      await callWorkflowApi("markUploaded", { invoiceId });
+      for (const invoice of paidQueue) {
+        await callWorkflowApi("markUploaded", { invoiceId: invoice["Invoice ID"] });
+      }
+      setSqlRows([]);
       await loadInvoices();
-      setMessage("Invoice marked as uploaded to SQL.");
+      setMessage(`Archived ${paidQueue.length} invoice(s) as uploaded to SQL.`);
     } catch (error) {
       setMessage(error.message);
     }
@@ -237,7 +242,7 @@ export default function App() {
     if (filter === "all") return true;
     if (filter === "paid") return invoice.Status === "Paid" && invoice["SQL Status"] !== "Uploaded to SQL";
     if (filter === "uploaded") return invoice["SQL Status"] === "Uploaded to SQL";
-    return invoice.Status !== "Uploaded to SQL" && invoice.Status !== "Cancelled";
+    return invoice.Status !== "Paid" && invoice.Status !== "Uploaded to SQL" && invoice.Status !== "Cancelled";
   });
 
   return (
@@ -281,7 +286,7 @@ export default function App() {
             </div>
           </header>
           <div className="workflow-stats">
-            <div><span>Active</span><strong>{invoices.filter((row) => row.Status !== "Uploaded to SQL").length}</strong></div>
+            <div><span>Active</span><strong>{invoices.filter((row) => row.Status !== "Paid" && row.Status !== "Uploaded to SQL" && row.Status !== "Cancelled").length}</strong></div>
             <div><span>Paid Queue</span><strong>{paidQueue.length}</strong></div>
             <div><span>Paid Value</span><strong>{money(paidQueue.reduce((sum, row) => sum + parseAmount(row.Total), 0))}</strong></div>
           </div>
@@ -294,7 +299,6 @@ export default function App() {
                   <th>Date</th>
                   <th>Total</th>
                   <th>Status</th>
-                  <th>SQL</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -306,22 +310,22 @@ export default function App() {
                     <td>{String(invoice["Invoice Date"] || "").slice(0, 12)}</td>
                     <td>{money(invoice.Total, invoice.Currency)}</td>
                     <td><span className={`workflow-status ${statusClass(invoice.Status)}`}>{invoice.Status}</span></td>
-                    <td><span className={`workflow-status ${statusClass(invoice["SQL Status"])}`}>{invoice["SQL Status"]}</span></td>
                     <td>
                       <div className="workflow-row-actions">
-                        <button type="button" className="secondary-button" onClick={() => markPaid(invoice["Invoice ID"])}>
+                        <button
+                          type="button"
+                          className={`secondary-button paid-check-button ${invoice.Status === "Paid" ? "is-paid" : ""}`}
+                          onClick={() => markPaid(invoice["Invoice ID"])}
+                          disabled={invoice.Status === "Paid"}
+                        >
                           <CheckCircle2 aria-hidden="true" />
                           Paid
-                        </button>
-                        <button type="button" className="secondary-button" onClick={() => markUploaded(invoice["Invoice ID"])}>
-                          <UploadCloud aria-hidden="true" />
-                          SQL
                         </button>
                       </div>
                     </td>
                   </tr>
                 )) : (
-                  <tr><td colSpan="7" className="workflow-empty">No invoices loaded.</td></tr>
+                  <tr><td colSpan="6" className="workflow-empty">No invoices loaded.</td></tr>
                 )}
               </tbody>
             </table>
@@ -385,9 +389,15 @@ export default function App() {
             </label>
           </section>
           <section className="workflow-section">
-            <div>
-              <p className="brand-label">Step 2</p>
-              <h2>Invoice Import</h2>
+            <div className="workflow-page-header compact">
+              <div>
+                <p className="brand-label">Step 2</p>
+                <h2>Invoice Import</h2>
+              </div>
+              <button type="button" className="secondary-button" onClick={markInvoicesUploaded}>
+                <UploadCloud aria-hidden="true" />
+                Invoices Uploaded
+              </button>
             </div>
           <div className="workflow-table-wrap">
             <table className="workflow-table">
