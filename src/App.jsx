@@ -125,6 +125,8 @@ export default function App() {
   const [sqlRows, setSqlRows] = useState([]);
   const [customerRows, setCustomerRows] = useState([]);
   const [customerQueue, setCustomerQueue] = useState([]);
+  const [customerUploadDone, setCustomerUploadDone] = useState(false);
+  const [invoiceUploadDone, setInvoiceUploadDone] = useState(false);
   const [filter, setFilter] = useState("active");
 
   const paidQueue = useMemo(
@@ -185,13 +187,15 @@ export default function App() {
       return;
     }
     if (!window.confirm("Mark paid invoices as uploaded to SQL?")) return;
+    const count = paidQueue.length;
     try {
       for (const invoice of paidQueue) {
         await callWorkflowApi("markUploaded", { invoiceId: invoice["Invoice ID"] });
       }
       setSqlRows([]);
       await loadInvoices();
-      setMessage(`Archived ${paidQueue.length} invoice(s) as uploaded to SQL.`);
+      setInvoiceUploadDone(true);
+      setMessage(`All ${count} invoice(s) uploaded and archived.`);
     } catch (error) {
       setMessage(error.message);
     }
@@ -199,6 +203,8 @@ export default function App() {
 
   async function refreshSqlExport() {
     try {
+      setCustomerUploadDone(false);
+      setInvoiceUploadDone(false);
       const data = await callWorkflowApi("refreshSqlExport");
       setSqlRows(data.rows || []);
       setCustomerRows(data.customerRows || []);
@@ -231,8 +237,9 @@ export default function App() {
       });
       setCustomerRows([]);
       setCustomerQueue([]);
-      setMessage(`Archived ${data.count || 0} customer(s) as uploaded.`);
       await refreshSqlExport();
+      setCustomerUploadDone(true);
+      setMessage(`All ${data.count || 0} customer(s) uploaded and archived.`);
     } catch (error) {
       setMessage(error.message);
     }
@@ -354,9 +361,13 @@ export default function App() {
                 <p className="brand-label">Step 1</p>
                 <h2>Customer Import</h2>
               </div>
-              <button type="button" className="secondary-button" onClick={markCustomersUploaded}>
-                <UploadCloud aria-hidden="true" />
-                Customers Uploaded
+              <button
+                type="button"
+                className={`secondary-button upload-done-button ${customerUploadDone ? "is-done" : ""}`}
+                onClick={markCustomersUploaded}
+              >
+                {customerUploadDone ? <CheckCircle2 aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
+                {customerUploadDone ? "All Uploaded" : "Customers Uploaded"}
               </button>
             </div>
             <div className="workflow-table-wrap">
@@ -394,9 +405,13 @@ export default function App() {
                 <p className="brand-label">Step 2</p>
                 <h2>Invoice Import</h2>
               </div>
-              <button type="button" className="secondary-button" onClick={markInvoicesUploaded}>
-                <UploadCloud aria-hidden="true" />
-                Invoices Uploaded
+              <button
+                type="button"
+                className={`secondary-button upload-done-button ${invoiceUploadDone ? "is-done" : ""}`}
+                onClick={markInvoicesUploaded}
+              >
+                {invoiceUploadDone ? <CheckCircle2 aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
+                {invoiceUploadDone ? "All Uploaded" : "Invoices Uploaded"}
               </button>
             </div>
           <div className="workflow-table-wrap">

@@ -42,6 +42,7 @@ Create a GitHub-friendly invoice workflow website that:
 - `Import Customer.xlsx` was inspected. Customer template sheet is `Customer`, header row is row 5, 48 columns from `CODE(10)` through `_EMAIL(200)`. Country code reference is on `Country`.
 - Backend now has `SQL Customers` archive and `Customer Export` output tabs. Customer rows are generated before invoice rows; customers can be marked uploaded to SQL.
 - Invoices page was simplified: it only has a Paid check action. Once marked paid, the invoice leaves the Active list but remains recorded in Google Sheet and appears in SQL Queue.
+- SQL Queue upload completion is clearer: after marking customers/invoices uploaded, the button changes to a green `All Uploaded` state.
 
 ## Important Decisions
 - Use Vite/React because the original invoice generator is React/Vite and should stay visually/functionally the same.
@@ -90,8 +91,10 @@ Create a GitHub-friendly invoice workflow website that:
 - Local browser smoke test passed: SQL Queue -> Refresh SQL Export showed `Prepared 0 customer(s), 0 invoice row(s).`
 - Simplified Invoices page actions: removed SQL upload action from the invoice row, removed payment-ref prompt, made Active exclude Paid invoices, and added an Invoices Uploaded action to SQL Queue.
 - Ran Vite production build successfully and browser smoke test confirmed Active hides paid invoice `104300` while Paid Queue still shows it.
+- Added green `All Uploaded` state for SQL Queue customer and invoice upload buttons.
+- Ran Vite production build successfully and checked SQL Queue buttons render without clicking real upload actions.
 
 ## Exact Next Steps
-1. Push simplified Invoices page to GitHub Pages.
-2. Test live Invoices page: Active should hide paid invoices and row actions should only show Paid.
-3. Use SQL Queue for Customer Uploaded and Invoices Uploaded archival.
+1. Push green upload confirmation state to GitHub Pages.
+2. Test live SQL Queue renders `Customers Uploaded` and `Invoices Uploaded` buttons.
+3. User can click upload buttons after actual SQL import; button should turn green `All Uploaded`.

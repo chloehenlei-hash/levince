@@ -919,6 +919,13 @@ textarea:focus {
   opacity: 1;
 }
 
+.upload-done-button.is-done {
+  border-color: #97d9b7;
+  background: #dff5e9;
+  color: #176a43;
+  box-shadow: 0 8px 18px rgba(35, 122, 75, 0.12);
+}
+
 .workflow-status.sent {
   background: #edf3ff;
   color: #215db8;
