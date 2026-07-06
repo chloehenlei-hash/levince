@@ -8,9 +8,33 @@ The website creates customer-facing payment request invoices. These are not the 
 
 When an invoice is marked `Paid`, it becomes eligible for SQL export.
 
-When Chloe clicks `Refresh SQL Export`, the Apps Script backend writes paid, not-yet-uploaded rows into the `SQL Export` tab using the SQL template column order.
+When Chloe clicks `Refresh SQL Export`, the Apps Script backend first checks `SQL Customers`.
+
+If a paid invoice belongs to a customer that has not been marked uploaded to SQL, the backend writes that customer into the `Customer Export` tab using the Import Customer template column order. The invoice rows are still prepared in the `SQL Export` tab, but Chloe should import customer rows into SQL first, then import invoice rows.
+
+After customer import succeeds in SQL, Chloe clicks `Customers Uploaded`. Those customers stay archived in `SQL Customers`, so they will not appear in future customer imports.
 
 After Chloe copies/imports those rows into SQL Account, she marks the invoice as `Uploaded to SQL`.
+
+## Customer Import Fields
+
+The customer import file uses the `Import Customer` template. Each new customer is exported as two rows: `BILLING` and `DELIVERY`.
+
+| SQL Customer Column | Source |
+| --- | --- |
+| `CODE(10)` | Auto-created SQL customer code, stored in `SQL Customers` |
+| `CONTROLACCOUNT(10)` | `DEFAULT_CUSTOMER_CONTROL_ACCOUNT`, default `300-000` |
+| `COMPANYNAME(100)` | Customer name |
+| `CREDITTERM(10)` | `DEFAULT_CUSTOMER_CREDIT_TERM`, default `C.O.D.` |
+| `TIN(14)` | Customer TIN, if supplied |
+| `IDTYPE` | Customer ID type, otherwise `0` |
+| `IDNO(20)` | Customer ID number, if supplied |
+| `SUBMISSIONTYPE` | `DEFAULT_SUBMISSION_TYPE`, default `17` |
+| `_BRANCHNAME(100)` | `BILLING` and `DELIVERY` |
+| `_ADDRESS1(60)` to `_ADDRESS4(60)` | Billing address split by line |
+| `_COUNTRY(2)` | `DEFAULT_COUNTRY`, default `MY` |
+| `_PHONE1(200)` | Customer phone |
+| `_EMAIL(200)` | Customer email |
 
 ## Important Fields
 
@@ -18,7 +42,7 @@ After Chloe copies/imports those rows into SQL Account, she marks the invoice as
 | --- | --- |
 | `DOCNO(20)` | `<<New>>` so SQL can generate its own invoice number |
 | `DOCDATE` | Website invoice date |
-| `CODE(10)` | SQL customer code from the invoice, otherwise `DEFAULT_CUSTOMER_CODE` from Settings |
+| `CODE(10)` | SQL customer code from `SQL Customers`, otherwise the invoice/default customer code |
 | `COMPANYNAME(100)` | Customer name |
 | `ADDRESS1(60)` to `ADDRESS4(60)` | Billing address split by line |
 | `PHONE1(200)` | Customer phone |

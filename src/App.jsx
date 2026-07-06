@@ -123,6 +123,8 @@ export default function App() {
   const [invoices, setInvoices] = useState([]);
   const [items, setItems] = useState([]);
   const [sqlRows, setSqlRows] = useState([]);
+  const [customerRows, setCustomerRows] = useState([]);
+  const [customerQueue, setCustomerQueue] = useState([]);
   const [filter, setFilter] = useState("active");
 
   const paidQueue = useMemo(
@@ -194,20 +196,41 @@ export default function App() {
     try {
       const data = await callWorkflowApi("refreshSqlExport");
       setSqlRows(data.rows || []);
-      setMessage(`Prepared ${(data.rows || []).length} SQL row(s).`);
+      setCustomerRows(data.customerRows || []);
+      setCustomerQueue(data.customers || []);
+      setMessage(`Prepared ${(data.customers || []).length} customer(s), ${(data.rows || []).length} invoice row(s).`);
     } catch (error) {
       setMessage(error.message);
     }
   }
 
-  async function copySqlRows() {
-    const text = rowsToTsv(sqlRows);
+  async function copyRows(rows, label) {
+    const text = rowsToTsv(rows);
     if (!text) {
-      setMessage("No SQL rows yet. Refresh SQL Export first.");
+      setMessage(`No ${label} rows yet. Refresh SQL Export first.`);
       return;
     }
     await navigator.clipboard.writeText(text);
-    setMessage("SQL rows copied.");
+    setMessage(`${label} rows copied.`);
+  }
+
+  async function markCustomersUploaded() {
+    if (!customerQueue.length) {
+      setMessage("No new customers waiting for SQL.");
+      return;
+    }
+    if (!window.confirm("Mark these customers as uploaded to SQL?")) return;
+    try {
+      const data = await callWorkflowApi("markCustomersUploaded", {
+        customerKeys: customerQueue.map((customer) => customer["Customer Key"]),
+      });
+      setCustomerRows([]);
+      setCustomerQueue([]);
+      setMessage(`Archived ${data.count || 0} customer(s) as uploaded.`);
+      await refreshSqlExport();
+    } catch (error) {
+      setMessage(error.message);
+    }
   }
 
   const visibleInvoices = invoices.filter((invoice) => {
@@ -316,10 +339,56 @@ export default function App() {
             <div className="workflow-row-actions">
               <button type="button" className="secondary-button" onClick={loadInvoices}>Refresh Invoices</button>
               <button type="button" className="primary-button" onClick={refreshSqlExport}>Refresh SQL Export</button>
-              <button type="button" className="secondary-button" onClick={copySqlRows}>Copy Rows</button>
+              <button type="button" className="secondary-button" onClick={() => copyRows(customerRows, "Customer")}>Copy Customer Rows</button>
+              <button type="button" className="secondary-button" onClick={() => copyRows(sqlRows, "Invoice")}>Copy Invoice Rows</button>
             </div>
           </header>
-          <p className="hint">Only Paid invoices that have not been marked Uploaded to SQL will appear here.</p>
+          <p className="hint">If new customers appear, import Customer rows into SQL first. Then import Invoice rows.</p>
+          <section className="workflow-section">
+            <div className="workflow-page-header compact">
+              <div>
+                <p className="brand-label">Step 1</p>
+                <h2>Customer Import</h2>
+              </div>
+              <button type="button" className="secondary-button" onClick={markCustomersUploaded}>
+                <UploadCloud aria-hidden="true" />
+                Customers Uploaded
+              </button>
+            </div>
+            <div className="workflow-table-wrap">
+              <table className="workflow-table">
+                <thead>
+                  <tr>
+                    <th>Code</th>
+                    <th>Customer</th>
+                    <th>Phone</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {customerQueue.length ? customerQueue.map((customer) => (
+                    <tr key={customer["Customer Key"]}>
+                      <td><strong>{customer["SQL Customer Code"]}</strong></td>
+                      <td>{customer["Customer Name"]}</td>
+                      <td>{customer["Customer Phone"]}</td>
+                      <td><span className={`workflow-status ${statusClass(customer.Status)}`}>{customer.Status}</span></td>
+                    </tr>
+                  )) : (
+                    <tr><td colSpan="4" className="workflow-empty">No new customers waiting for SQL.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <label className="field workflow-export">
+              <span>Customer template rows</span>
+              <textarea readOnly value={rowsToTsv(customerRows)} />
+            </label>
+          </section>
+          <section className="workflow-section">
+            <div>
+              <p className="brand-label">Step 2</p>
+              <h2>Invoice Import</h2>
+            </div>
           <div className="workflow-table-wrap">
             <table className="workflow-table">
               <thead>
@@ -347,9 +416,10 @@ export default function App() {
             </table>
           </div>
           <label className="field workflow-export">
-            <span>SQL template rows</span>
+            <span>Invoice template rows</span>
             <textarea readOnly value={rowsToTsv(sqlRows)} />
           </label>
+          </section>
         </main>
       ) : null}
     </>

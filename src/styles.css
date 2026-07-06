@@ -821,8 +821,21 @@ textarea:focus {
   margin-bottom: 18px;
 }
 
+.workflow-page-header.compact {
+  margin-bottom: 12px;
+}
+
 .workflow-page h1 {
   font-size: clamp(2rem, 4vw, 4.15rem);
+}
+
+.workflow-page h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.workflow-section {
+  margin-top: 22px;
 }
 
 .workflow-stats {

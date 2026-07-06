@@ -37,6 +37,10 @@ Create a GitHub-friendly invoice workflow website that:
 - Apps Script now uses the bound Google Sheet through `getActiveSpreadsheet()`.
 - Backend POST/listInvoices test now succeeds and returns `{ ok: true, invoices: [], items: [] }`.
 - Local browser smoke test confirmed the website can load invoices from Google Sheet and no Setup/PIN UI is visible.
+- GitHub Pages browser test exposed Google Apps Script CORS blocking direct `fetch`, so the frontend is being switched to hidden iframe form submit with `postMessage`.
+- User added SQL customer import requirement: before importing invoices, new customers must be exported/imported into SQL using the `Import Customer.xlsx` template. Previously uploaded SQL customers should be archived and skipped in future customer exports.
+- `Import Customer.xlsx` was inspected. Customer template sheet is `Customer`, header row is row 5, 48 columns from `CODE(10)` through `_EMAIL(200)`. Country code reference is on `Country`.
+- Backend now has `SQL Customers` archive and `Customer Export` output tabs. Customer rows are generated before invoice rows; customers can be marked uploaded to SQL.
 
 ## Important Decisions
 - Use Vite/React because the original invoice generator is React/Vite and should stay visually/functionally the same.
@@ -75,7 +79,16 @@ Create a GitHub-friendly invoice workflow website that:
 - Tested Apps Script Web App URL. GET returned `{ ok: true }`; after switching to `getActiveSpreadsheet()`, POST/listInvoices returned `{ ok: true, invoices: [], items: [] }`.
 - Ran Vite production build successfully with hidden backend URL.
 - Ran local browser smoke test; Invoices -> Refresh showed `Loaded 0 invoice(s).`.
+- Online browser smoke test reached GitHub Pages but direct fetch failed with Google CORS; changed transport approach in `src/workflowApi.js` and `apps-script/Code.gs`.
+- Inspected `Import Customer.xlsx` with the spreadsheet tool and captured SQL customer import headers.
+- Added customer archive/export logic to `apps-script/Code.gs`; script is 157 lines.
+- Updated SQL Queue UI with Customer Import and Invoice Import sections.
+- Ran Apps Script syntax check and Vite production build successfully.
+- Local iframe smoke test timed out because Apps Script wraps HtmlService output in an inner iframe. Updated Apps Script response to call `window.top.postMessage(...)`.
+- After redeploy, backend `refreshSqlExport` returned both customer and invoice headers successfully.
+- Local browser smoke test passed: SQL Queue -> Refresh SQL Export showed `Prepared 0 customer(s), 0 invoice row(s).`
 
 ## Exact Next Steps
-1. Push `src/workflowApi.js` with the hidden backend URL to GitHub Pages.
-2. Create the first test invoice, click `Save to Workflow`, mark it paid, and refresh SQL export.
+1. Push updated frontend/backend helper to GitHub Pages.
+2. Test the live GitHub Pages SQL Queue refresh.
+3. Create the first paid test invoice, refresh SQL export, verify customer rows appear first, mark customers uploaded, then import invoice rows.
