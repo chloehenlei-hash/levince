@@ -26,6 +26,7 @@ import {
   validateInvoice,
 } from "./pdf/invoicePdf";
 import { parsePastedInvoiceDetails as parseInvoiceTextDetails } from "./utils/invoiceTextParser";
+import { getPdfFileFromPaste, parsePastedPdfInvoice } from "./utils/pdfInvoiceParser";
 
 const STORAGE_KEY = "levince-invoice-draft";
 
@@ -108,6 +109,27 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "" }) {
     },
     [],
   );
+
+  useEffect(() => {
+    async function handlePaste(event) {
+      const file = getPdfFileFromPaste(event);
+      if (!file) return;
+      event.preventDefault();
+      setQuickPasteStatus("Reading PDF...");
+      try {
+        const parsed = await parsePastedPdfInvoice(file, invoice);
+        setInvoice(withDefaultPaymentNotes(parsed));
+        clearGeneratedOutput();
+        setError("");
+        setQuickPasteStatus("PDF applied. Review the fields, then generate again.");
+      } catch (pasteError) {
+        setQuickPasteStatus(pasteError.message || "Unable to read this PDF.");
+      }
+    }
+
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, [invoice]);
 
   function updateInvoice(field, value) {
     setInvoice((current) => ({ ...current, [field]: value }));

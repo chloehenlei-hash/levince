@@ -46,6 +46,8 @@ Create a GitHub-friendly invoice workflow website that:
 - SQL Queue copy buttons now live inside their own sections: `Copy Customer Rows` under Customer Import and `Copy Invoice Rows` under Invoice Import.
 - Duplicate invoice numbers now have an overwrite path in local code: the website asks for confirmation with old/new customer and amount, then the Apps Script backend replaces the existing invoice row and item rows instead of creating a duplicate.
 - New Invoice no longer has a separate Save to Workflow button. Downloading a generated PDF now automatically saves the matching invoice data into the workflow.
+- New Invoice now supports pasting a text-based PDF from the clipboard. When a pasted PDF file is detected, the site reads its text and fills the invoice form for review/editing.
+- The frontend dependency manager was switched from npm lockfile to pnpm lockfile because the PDF reader dependency was added with pnpm and GitHub Pages needs to install from `pnpm-lock.yaml`.
 
 ## Important Decisions
 - Use Vite/React because the original invoice generator is React/Vite and should stay visually/functionally the same.
@@ -103,9 +105,12 @@ Create a GitHub-friendly invoice workflow website that:
 - Ran Apps Script syntax check through Node stdin; `apps-script/Code.gs` is 164 lines.
 - Updated `src/InvoiceGenerator.jsx` so Download auto-saves to Google Sheet via the existing workflow save path and removed the standalone Save to Workflow button.
 - Ran Vite production build successfully after auto-save-on-download.
+- Added `pdfjs-dist` and `src/utils/pdfInvoiceParser.js` for clipboard PDF text extraction.
+- Updated `src/InvoiceGenerator.jsx` to listen for pasted PDF files and apply parsed fields to the invoice form.
+- Updated GitHub Pages workflow to use pnpm, added `pnpm-lock.yaml`, and removed stale `package-lock.json`.
+- Ran Vite production build successfully after adding paste-PDF support.
 
 ## Exact Next Steps
-1. Deploy the updated `apps-script/Code.gs` to Apps Script so overwrite works against the live Google Sheet.
-2. Push the frontend overwrite confirmation update to GitHub Pages.
-3. Push the frontend auto-save-on-download update to GitHub Pages.
-4. Add PDF upload/prefill after confirming the small PDF text-reading dependency is allowed.
+1. Push paste-PDF support to GitHub Pages.
+2. Test live New Invoice by copying a text-based Levince PDF from WhatsApp/browser and pasting into the page.
+3. If WhatsApp clipboard does not expose the PDF file to Safari, add a visible PDF drop/upload fallback.
