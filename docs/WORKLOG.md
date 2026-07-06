@@ -51,6 +51,8 @@ Create a GitHub-friendly invoice workflow website that:
 - The PDF paste feature now has a visible `Paste PDF here` box in Quick Paste, with click-to-choose and drag/drop fallback for Safari/WhatsApp clipboard limitations.
 - GitHub Pages stayed on an older asset after paste-PDF work because workflow runs #11 and #12 failed in the `Setup Node` step when using pnpm cache.
 - Workflow run #13 passed setup but failed in dependency install, so the deploy flow is being changed to publish committed `dist` directly.
+- Live PDF import showed `undefined is not a function` in Safari when choosing/uploading a PDF. The PDF reader was downgraded to `pdfjs-dist@3.11.174` and switched to legacy no-worker parsing for Safari compatibility.
+- Local build after the Safari PDF fix succeeded and produced `dist/assets/index-DZD8X1AU.js` plus `dist/assets/pdf-Dt0fHlmb.js`.
 
 ## Important Decisions
 - Use Vite/React because the original invoice generator is React/Vite and should stay visually/functionally the same.
@@ -61,6 +63,7 @@ Create a GitHub-friendly invoice workflow website that:
 - Use Chloe's internal invoice number for the customer-facing payment request.
 - Let SQL Account generate the official SQL invoice number.
 - Preserve uploaded/completed invoices in history instead of deleting them.
+- Frontend changes must include a fresh local `dist` build because GitHub Pages now publishes the committed `dist` artifact directly.
 
 ## Commands Already Run
 - Checked current folder contents.
@@ -116,8 +119,9 @@ Create a GitHub-friendly invoice workflow website that:
 - Ran Vite production build successfully after adding the visible PDF entry point.
 - Removed pnpm cache from `.github/workflows/deploy.yml` to avoid the failed `Setup Node` cache step.
 - Changed GitHub Pages workflow to upload committed `dist` directly instead of installing dependencies/building on GitHub.
+- Downgraded the PDF reader to `pdfjs-dist@3.11.174`, disabled the PDF worker, and ran a successful Vite production build for the Safari PDF import fix.
 
 ## Exact Next Steps
-1. Commit the current local `dist` output and verify GitHub Pages deploys `index-BvkPEuya.js`.
-2. Test live New Invoice by copying a text-based Levince PDF from WhatsApp/browser and pasting into the `Paste PDF here` box.
-3. If WhatsApp clipboard still does not expose the PDF file to Safari, use the same box's `Choose PDF` fallback.
+1. Commit and push the Safari PDF import fix with the rebuilt `dist` output.
+2. Verify GitHub Pages deploy succeeds and serves `index-DZD8X1AU.js`.
+3. Ask Chloe to refresh the live site and try `Choose PDF` or paste into the `Paste PDF here` box again.

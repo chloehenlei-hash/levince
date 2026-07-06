@@ -53,18 +53,13 @@ function rowsFromItems(items) {
 }
 
 async function loadPdfJs() {
-  const [pdfjs, worker] = await Promise.all([
-    import("pdfjs-dist/legacy/build/pdf.mjs"),
-    import("pdfjs-dist/legacy/build/pdf.worker.mjs?url"),
-  ]);
-  pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
-  return pdfjs;
+  return import("pdfjs-dist/legacy/build/pdf.js");
 }
 
 async function extractRows(file) {
   const pdfjs = await loadPdfJs();
   const data = new Uint8Array(await file.arrayBuffer());
-  const pdf = await pdfjs.getDocument({ data }).promise;
+  const pdf = await pdfjs.getDocument({ data, disableWorker: true }).promise;
   const all = [];
   for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
     const page = await pdf.getPage(pageNo);
