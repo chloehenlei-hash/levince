@@ -49,6 +49,7 @@ Create a GitHub-friendly invoice workflow website that:
 - New Invoice now supports pasting a text-based PDF from the clipboard. When a pasted PDF file is detected, the site reads its text and fills the invoice form for review/editing.
 - The frontend dependency manager was switched from npm lockfile to pnpm lockfile because the PDF reader dependency was added with pnpm and GitHub Pages needs to install from `pnpm-lock.yaml`.
 - The PDF paste feature now has a visible `Paste PDF here` box in Quick Paste, with click-to-choose and drag/drop fallback for Safari/WhatsApp clipboard limitations.
+- GitHub Pages stayed on an older asset after paste-PDF work because workflow runs #11 and #12 failed in the `Setup Node` step when using pnpm cache.
 
 ## Important Decisions
 - Use Vite/React because the original invoice generator is React/Vite and should stay visually/functionally the same.
@@ -112,8 +113,9 @@ Create a GitHub-friendly invoice workflow website that:
 - Ran Vite production build successfully after adding paste-PDF support.
 - Added visible PDF paste/drop/choose UI in `src/InvoiceGenerator.jsx` and styling in `src/styles.css`.
 - Ran Vite production build successfully after adding the visible PDF entry point.
+- Removed pnpm cache from `.github/workflows/deploy.yml` to avoid the failed `Setup Node` cache step.
 
 ## Exact Next Steps
-1. Push the visible PDF paste/drop/choose UI to GitHub Pages.
+1. Push the workflow fix and verify GitHub Pages deploys a new `index-*.js` asset.
 2. Test live New Invoice by copying a text-based Levince PDF from WhatsApp/browser and pasting into the `Paste PDF here` box.
 3. If WhatsApp clipboard still does not expose the PDF file to Safari, use the same box's `Choose PDF` fallback.
