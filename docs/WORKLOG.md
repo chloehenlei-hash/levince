@@ -43,6 +43,7 @@ Create a GitHub-friendly invoice workflow website that:
 - Backend now has `SQL Customers` archive and `Customer Export` output tabs. Customer rows are generated before invoice rows; customers can be marked uploaded to SQL.
 - Invoices page was simplified: it only has a Paid check action. Once marked paid, the invoice leaves the Active list but remains recorded in Google Sheet and appears in SQL Queue.
 - SQL Queue upload completion is clearer: after marking customers/invoices uploaded, the button changes to a green `All Uploaded` state.
+- SQL Queue copy buttons now live inside their own sections: `Copy Customer Rows` under Customer Import and `Copy Invoice Rows` under Invoice Import.
 
 ## Important Decisions
 - Use Vite/React because the original invoice generator is React/Vite and should stay visually/functionally the same.
@@ -93,8 +94,10 @@ Create a GitHub-friendly invoice workflow website that:
 - Ran Vite production build successfully and browser smoke test confirmed Active hides paid invoice `104300` while Paid Queue still shows it.
 - Added green `All Uploaded` state for SQL Queue customer and invoice upload buttons.
 - Ran Vite production build successfully and checked SQL Queue buttons render without clicking real upload actions.
+- Moved copy buttons out of the SQL Queue header into their respective Customer Import and Invoice Import sections.
+- Ran Vite production build successfully and browser smoke test confirmed header only has refresh buttons while section buttons have copy/upload actions.
 
 ## Exact Next Steps
-1. Push green upload confirmation state to GitHub Pages.
-2. Test live SQL Queue renders `Customers Uploaded` and `Invoices Uploaded` buttons.
-3. User can click upload buttons after actual SQL import; button should turn green `All Uploaded`.
+1. Push SQL Queue copy-button placement update to GitHub Pages.
+2. Test live SQL Queue header and section buttons.
+3. User can copy rows from each section and click upload buttons after actual SQL import.

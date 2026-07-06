@@ -350,8 +350,6 @@ export default function App() {
             <div className="workflow-row-actions">
               <button type="button" className="secondary-button" onClick={loadInvoices}>Refresh Invoices</button>
               <button type="button" className="primary-button" onClick={refreshSqlExport}>Refresh SQL Export</button>
-              <button type="button" className="secondary-button" onClick={() => copyRows(customerRows, "Customer")}>Copy Customer Rows</button>
-              <button type="button" className="secondary-button" onClick={() => copyRows(sqlRows, "Invoice")}>Copy Invoice Rows</button>
             </div>
           </header>
           <p className="hint">If new customers appear, import Customer rows into SQL first. Then import Invoice rows.</p>
@@ -361,14 +359,19 @@ export default function App() {
                 <p className="brand-label">Step 1</p>
                 <h2>Customer Import</h2>
               </div>
-              <button
-                type="button"
-                className={`secondary-button upload-done-button ${customerUploadDone ? "is-done" : ""}`}
-                onClick={markCustomersUploaded}
-              >
-                {customerUploadDone ? <CheckCircle2 aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
-                {customerUploadDone ? "All Uploaded" : "Customers Uploaded"}
-              </button>
+              <div className="workflow-row-actions">
+                <button type="button" className="secondary-button" onClick={() => copyRows(customerRows, "Customer")}>
+                  Copy Customer Rows
+                </button>
+                <button
+                  type="button"
+                  className={`secondary-button upload-done-button ${customerUploadDone ? "is-done" : ""}`}
+                  onClick={markCustomersUploaded}
+                >
+                  {customerUploadDone ? <CheckCircle2 aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
+                  {customerUploadDone ? "All Uploaded" : "Customers Uploaded"}
+                </button>
+              </div>
             </div>
             <div className="workflow-table-wrap">
               <table className="workflow-table">
@@ -405,14 +408,19 @@ export default function App() {
                 <p className="brand-label">Step 2</p>
                 <h2>Invoice Import</h2>
               </div>
-              <button
-                type="button"
-                className={`secondary-button upload-done-button ${invoiceUploadDone ? "is-done" : ""}`}
-                onClick={markInvoicesUploaded}
-              >
-                {invoiceUploadDone ? <CheckCircle2 aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
-                {invoiceUploadDone ? "All Uploaded" : "Invoices Uploaded"}
-              </button>
+              <div className="workflow-row-actions">
+                <button type="button" className="secondary-button" onClick={() => copyRows(sqlRows, "Invoice")}>
+                  Copy Invoice Rows
+                </button>
+                <button
+                  type="button"
+                  className={`secondary-button upload-done-button ${invoiceUploadDone ? "is-done" : ""}`}
+                  onClick={markInvoicesUploaded}
+                >
+                  {invoiceUploadDone ? <CheckCircle2 aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
+                  {invoiceUploadDone ? "All Uploaded" : "Invoices Uploaded"}
+                </button>
+              </div>
             </div>
           <div className="workflow-table-wrap">
             <table className="workflow-table">
