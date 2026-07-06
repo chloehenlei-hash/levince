@@ -44,6 +44,8 @@ Create a GitHub-friendly invoice workflow website that:
 - Invoices page was simplified: it only has a Paid check action. Once marked paid, the invoice leaves the Active list but remains recorded in Google Sheet and appears in SQL Queue.
 - SQL Queue upload completion is clearer: after marking customers/invoices uploaded, the button changes to a green `All Uploaded` state.
 - SQL Queue copy buttons now live inside their own sections: `Copy Customer Rows` under Customer Import and `Copy Invoice Rows` under Invoice Import.
+- Duplicate invoice numbers now have an overwrite path in local code: the website asks for confirmation with old/new customer and amount, then the Apps Script backend replaces the existing invoice row and item rows instead of creating a duplicate.
+- New Invoice no longer has a separate Save to Workflow button. Downloading a generated PDF now automatically saves the matching invoice data into the workflow.
 
 ## Important Decisions
 - Use Vite/React because the original invoice generator is React/Vite and should stay visually/functionally the same.
@@ -96,8 +98,14 @@ Create a GitHub-friendly invoice workflow website that:
 - Ran Vite production build successfully and checked SQL Queue buttons render without clicking real upload actions.
 - Moved copy buttons out of the SQL Queue header into their respective Customer Import and Invoice Import sections.
 - Ran Vite production build successfully and browser smoke test confirmed header only has refresh buttons while section buttons have copy/upload actions.
+- Added duplicate-invoice overwrite handling in `src/App.jsx`, error metadata support in `src/workflowApi.js`, and overwrite/delete-item behavior in `apps-script/Code.gs`.
+- Ran Vite production build successfully with the overwrite changes.
+- Ran Apps Script syntax check through Node stdin; `apps-script/Code.gs` is 164 lines.
+- Updated `src/InvoiceGenerator.jsx` so Download auto-saves to Google Sheet via the existing workflow save path and removed the standalone Save to Workflow button.
+- Ran Vite production build successfully after auto-save-on-download.
 
 ## Exact Next Steps
-1. Push SQL Queue copy-button placement update to GitHub Pages.
-2. Test live SQL Queue header and section buttons.
-3. User can copy rows from each section and click upload buttons after actual SQL import.
+1. Deploy the updated `apps-script/Code.gs` to Apps Script so overwrite works against the live Google Sheet.
+2. Push the frontend overwrite confirmation update to GitHub Pages.
+3. Push the frontend auto-save-on-download update to GitHub Pages.
+4. Add PDF upload/prefill after confirming the small PDF text-reading dependency is allowed.

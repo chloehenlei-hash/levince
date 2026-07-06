@@ -116,6 +116,16 @@ function rowsToTsv(rows) {
     .join("\n");
 }
 
+function confirmOverwrite(existing, nextInvoice) {
+  const oldCustomer = existing?.customerName || "Unknown customer";
+  const oldTotal = money(existing?.total, nextInvoice.currency);
+  const nextCustomer = nextInvoice.customerName || "Unknown customer";
+  const nextTotal = money(nextInvoice.total, nextInvoice.currency);
+  return window.confirm(
+    `Invoice ${nextInvoice.invoiceNo} already exists.\n\nOld: ${oldCustomer} - ${oldTotal}\nNew: ${nextCustomer} - ${nextTotal}\n\nOverwrite the old record?`,
+  );
+}
+
 export default function App() {
   const [view, setView] = useState("new");
   const [message, setMessage] = useState("");
@@ -151,18 +161,28 @@ export default function App() {
       const mapped = invoiceToWorkflowPayload(payload);
       if (!mapped.invoice.invoiceNo) {
         setSaveStatus("Document number is required before saving.");
-        return;
+        return false;
       }
       if (!mapped.invoice.customerName) {
         setSaveStatus("Customer name is required before saving.");
-        return;
+        return false;
       }
       setSaveStatus("Saving...");
-      await callWorkflowApi("createInvoice", mapped);
-      setSaveStatus(`Saved ${mapped.invoice.invoiceNo} to workflow.`);
+      try {
+        await callWorkflowApi("createInvoice", mapped);
+        setSaveStatus(`Saved ${mapped.invoice.invoiceNo} to workflow.`);
+      } catch (error) {
+        if (error.data?.code !== "DUPLICATE_INVOICE" || !confirmOverwrite(error.data.existing, mapped.invoice)) {
+          throw error;
+        }
+        await callWorkflowApi("createInvoice", { ...mapped, overwrite: true });
+        setSaveStatus(`Overwrote ${mapped.invoice.invoiceNo} in workflow.`);
+      }
       await loadInvoices();
+      return true;
     } catch (error) {
       setSaveStatus(error.message);
+      return false;
     }
   }
 

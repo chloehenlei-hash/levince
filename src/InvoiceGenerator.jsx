@@ -91,6 +91,8 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "" }) {
   const [quickPasteStatus, setQuickPasteStatus] = useState("");
   const [tableLayout, setTableLayout] = useState("normal");
   const lastPreviewUrl = useRef("");
+  const generatedInvoiceRef = useRef(null);
+  const lastAutoSavedKey = useRef("");
 
   const missingFields = useMemo(() => validateInvoice(invoice), [invoice]);
   const subtotal = useMemo(() => getInvoiceSubtotal(invoice), [invoice]);
@@ -172,6 +174,16 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "" }) {
           : group,
       ),
     }));
+  }
+
+  function clearGeneratedOutput() {
+    if (lastPreviewUrl.current) URL.revokeObjectURL(lastPreviewUrl.current);
+    lastPreviewUrl.current = "";
+    generatedInvoiceRef.current = null;
+    lastAutoSavedKey.current = "";
+    setPreviewUrl("");
+    setGeneratedBlob(null);
+    setFilename("");
   }
 
   function addServiceGroup() {
@@ -276,11 +288,27 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "" }) {
       setPreviewUrl(url);
       setGeneratedBlob(result.blob);
       setFilename(result.filename);
+      generatedInvoiceRef.current = normaliseInvoiceData(invoice);
+      lastAutoSavedKey.current = "";
     } catch (generationError) {
       setError(generationError.message || "Unable to generate PDF.");
     } finally {
       setIsGenerating(false);
     }
+  }
+
+  async function autoSaveDownloadedInvoice(fileName) {
+    if (!onSaveInvoice) return;
+    const savedInvoice = generatedInvoiceRef.current || invoice;
+    const saveKey = `${savedInvoice.receiptNumber || ""}|${fileName}|${generatedBlob?.size || 0}`;
+    if (lastAutoSavedKey.current === saveKey) return;
+    const saved = await onSaveInvoice({
+      invoice: savedInvoice,
+      tableLayout,
+      filename: fileName,
+      hasGeneratedPdf: true,
+    });
+    if (saved) lastAutoSavedKey.current = saveKey;
   }
 
   async function handleDownload() {
@@ -296,6 +324,7 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "" }) {
             files: [file],
             title: fileName.replace(/\.pdf$/i, ""),
           });
+          await autoSaveDownloadedInvoice(fileName);
           return;
         } catch (shareError) {
           if (shareError?.name === "AbortError") return;
@@ -312,12 +341,14 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "" }) {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 30000);
+    await autoSaveDownloadedInvoice(fileName);
   }
 
   function resetToSample() {
     setInvoice({ ...defaultInvoiceData(), invoiceDate: getCurrentInvoiceDate() });
     setTableLayout("normal");
     setError("");
+    clearGeneratedOutput();
   }
 
   function clearForm() {
@@ -325,6 +356,7 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "" }) {
     setTableLayout("normal");
     setError("");
     setQuickPasteStatus("");
+    clearGeneratedOutput();
   }
 
   function applyQuickPaste() {
@@ -728,15 +760,6 @@ For airport arrival, 90 minutes waiting time is included.`}
               <button type="button" className="download-button" onClick={handleDownload}>
                 <Download aria-hidden="true" />
                 Download
-              </button>
-            ) : null}
-            {onSaveInvoice ? (
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => onSaveInvoice({ invoice, tableLayout, filename, hasGeneratedPdf: Boolean(previewUrl) })}
-              >
-                Save to Workflow
               </button>
             ) : null}
             {saveStatus ? <span className="workflow-save-status">{saveStatus}</span> : null}

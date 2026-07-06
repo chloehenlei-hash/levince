@@ -58,8 +58,13 @@ function submitViaIframe(payload) {
       if (message.source !== "levince-workflow" || message.requestId !== requestId) return;
       window.clearTimeout(timeout);
       const data = message.data || {};
-      if (!data.ok) finish(reject, new Error(data.error || "Backend request failed."));
-      else finish(resolve, data);
+      if (!data.ok) {
+        const error = new Error(data.error || "Backend request failed.");
+        error.data = data;
+        finish(reject, error);
+      } else {
+        finish(resolve, data);
+      }
     }
 
     window.addEventListener("message", onMessage);

@@ -68,11 +68,18 @@ function createInvoice(q) {
   const inv = q.invoice || {}, items = q.items || [], no = String(inv.invoiceNo || "").trim();
   if (!no) throw new Error("Document number is required.");
   if (!inv.customerName) throw new Error("Customer name is required.");
-  if (rows(T.inv).some(r => r["Internal Invoice No"] === no)) throw new Error("This document number already exists.");
-  const id = Utilities.getUuid(), t = now();
-  append(T.inv, IH, {"Invoice ID":id,"Internal Invoice No":no,"Document Type":inv.documentType||"INVOICE",Status:"Sent","SQL Status":"Not Uploaded","Customer Name":inv.customerName||"","SQL Customer Code":inv.sqlCustomerCode||"","Customer Email":inv.customerEmail||"","Customer Phone":inv.customerPhone||"","Billing Address":inv.billingAddress||"","Invoice Date":inv.invoiceDate||"","Due Date":inv.dueDate||"",Currency:inv.currency||"RM",Subtotal:num(inv.subtotal),Discount:num(inv.discount),Tax:num(inv.tax),Total:num(inv.total),Notes:inv.notes||"",Terms:inv.terms||"",TIN:inv.tin||"","ID Type":inv.idType||"","ID No":inv.idNo||"","PDF File URL":inv.pdfUrl||"","Created By":user(q),"Created At":t,"Updated At":t,"Sent At":t});
+  const existing = rows(T.inv).find(r => String(r["Internal Invoice No"]) === no);
+  if (existing && !q.overwrite) return { ok: false, code: "DUPLICATE_INVOICE", error: "This document number already exists.", existing: dupInfo(existing) };
+  const t = now(), id = existing ? existing["Invoice ID"] : Utilities.getUuid();
+  const row = {"Invoice ID":id,"Internal Invoice No":no,"Document Type":inv.documentType||"INVOICE",Status:existing ? existing.Status || "Sent" : "Sent","SQL Status":existing ? existing["SQL Status"] || "Not Uploaded" : "Not Uploaded","Customer Name":inv.customerName||"","SQL Customer Code":inv.sqlCustomerCode||"","Customer Email":inv.customerEmail||"","Customer Phone":inv.customerPhone||"","Billing Address":inv.billingAddress||"","Invoice Date":inv.invoiceDate||"","Due Date":inv.dueDate||"",Currency:inv.currency||"RM",Subtotal:num(inv.subtotal),Discount:num(inv.discount),Tax:num(inv.tax),Total:num(inv.total),Notes:inv.notes||"",Terms:inv.terms||"",TIN:inv.tin||"","ID Type":inv.idType||"","ID No":inv.idNo||"","PDF File URL":inv.pdfUrl||"","Created By":existing ? existing["Created By"] : user(q),"Created At":existing ? existing["Created At"] : t,"Updated At":t,"Sent At":existing ? existing["Sent At"] : t,"Paid At":existing ? existing["Paid At"] : "","Payment Ref":existing ? existing["Payment Ref"] : "","Payment Proof URL":existing ? existing["Payment Proof URL"] : "","Uploaded To SQL At":existing ? existing["Uploaded To SQL At"] : "","Uploaded By":existing ? existing["Uploaded By"] : ""};
+  if (existing) { updateInv(id, row); deleteItems(id); } else append(T.inv, IH, row);
   items.forEach((it, i) => append(T.item, ITH, {"Item ID":Utilities.getUuid(),"Invoice ID":id,"Internal Invoice No":no,Sequence:i+1,"Item Code":it.itemCode||"",Description:it.description||"",Quantity:num(it.quantity),UOM:it.uom||"", "Unit Price":num(it.unitPrice),Discount:num(it.discount),"Tax Code":it.taxCode||"","Tax Amount":num(it.taxAmount),Amount:num(it.amount),"Account Code":it.accountCode||"","Created At":t,"Updated At":t}));
-  log(q, "createInvoice", id, no, "Created"); return { ok: true, invoice: { invoiceId: id, invoiceNo: no } };
+  log(q, existing ? "overwriteInvoice" : "createInvoice", id, no, existing ? "Overwritten" : "Created"); return { ok: true, overwritten: Boolean(existing), invoice: { invoiceId: id, invoiceNo: no } };
+}
+function dupInfo(inv) { return { invoiceId: inv["Invoice ID"], invoiceNo: inv["Internal Invoice No"], customerName: inv["Customer Name"], total: inv.Total, status: inv.Status, sqlStatus: inv["SQL Status"] }; }
+function deleteItems(id) {
+  const sh = ss().getSheetByName(T.item), vals = sh.getDataRange().getValues(), ix = vals[0].indexOf("Invoice ID");
+  for (let r = vals.length - 1; r > 0; r--) if (vals[r][ix] === id) sh.deleteRow(r + 1);
 }
 
 function findInv(id) {
