@@ -53,6 +53,7 @@ Create a GitHub-friendly invoice workflow website that:
 - Workflow run #13 passed setup but failed in dependency install, so the deploy flow is being changed to publish committed `dist` directly.
 - Live PDF import showed `undefined is not a function` in Safari when choosing/uploading a PDF. The PDF reader was downgraded to `pdfjs-dist@3.11.174` and switched to legacy no-worker parsing for Safari compatibility.
 - Local build after the Safari PDF fix succeeded and produced `dist/assets/index-DZD8X1AU.js` plus `dist/assets/pdf-Dt0fHlmb.js`.
+- Live PDF import then showed `No "GlobalWorkerOptions.workerSrc" specified.`. The parser now sets the legacy PDF worker URL explicitly, and the rebuilt site includes `dist/assets/pdf.worker-CzcBcYLo.js`.
 
 ## Important Decisions
 - Use Vite/React because the original invoice generator is React/Vite and should stay visually/functionally the same.
@@ -120,8 +121,9 @@ Create a GitHub-friendly invoice workflow website that:
 - Removed pnpm cache from `.github/workflows/deploy.yml` to avoid the failed `Setup Node` cache step.
 - Changed GitHub Pages workflow to upload committed `dist` directly instead of installing dependencies/building on GitHub.
 - Downgraded the PDF reader to `pdfjs-dist@3.11.174`, disabled the PDF worker, and ran a successful Vite production build for the Safari PDF import fix.
+- Added an explicit legacy PDF worker URL for PDF import and ran a successful Vite production build.
 
 ## Exact Next Steps
-1. Commit and push the Safari PDF import fix with the rebuilt `dist` output.
-2. Verify GitHub Pages deploy succeeds and serves `index-DZD8X1AU.js`.
+1. Commit and push the PDF worker fix with the rebuilt `dist` output.
+2. Verify GitHub Pages deploy succeeds and serves `index-B2vCKT_A.js`.
 3. Ask Chloe to refresh the live site and try `Choose PDF` or paste into the `Paste PDF here` box again.

@@ -8,6 +8,7 @@ import {
   DEFAULT_PAYMENT_NOTES,
   normaliseInvoiceData,
 } from "../pdf/invoicePdf.js";
+import pdfWorkerSrc from "pdfjs-dist/legacy/build/pdf.worker.js?url";
 
 const PDF_EXT_RE = /\.pdf$/i;
 const CURRENCY_RE = /^(RM|MYR|TWD|NTD|USD|SGD|HKD|AUD|GBP|EUR|JPY|CNY|RMB|THB|IDR|PHP|KRW)$/i;
@@ -53,13 +54,15 @@ function rowsFromItems(items) {
 }
 
 async function loadPdfJs() {
-  return import("pdfjs-dist/legacy/build/pdf.js");
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.js");
+  pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
+  return pdfjs;
 }
 
 async function extractRows(file) {
   const pdfjs = await loadPdfJs();
   const data = new Uint8Array(await file.arrayBuffer());
-  const pdf = await pdfjs.getDocument({ data, disableWorker: true }).promise;
+  const pdf = await pdfjs.getDocument({ data }).promise;
   const all = [];
   for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
     const page = await pdf.getPage(pageNo);
