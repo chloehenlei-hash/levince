@@ -55,6 +55,8 @@ Create a GitHub-friendly invoice workflow website that:
 - Local build after the Safari PDF fix succeeded and produced `dist/assets/index-DZD8X1AU.js` plus `dist/assets/pdf-Dt0fHlmb.js`.
 - Live PDF import then showed `No "GlobalWorkerOptions.workerSrc" specified.`. The parser now sets the legacy PDF worker URL explicitly, and the rebuilt site includes `dist/assets/pdf.worker-CzcBcYLo.js`.
 - PDF import was filling blank Qty/Amount cells as `1` and `0`. The parser now only fills Qty or Amount when the original PDF cell contains a value, recognizes date ranges like `23rd - 24th June`, and allows amount rows with blank Qty.
+- Manual screenshot import completed for 18 visible document numbers from July backlog. INVOICE/RECEIPT documents were marked Paid; QUOTATION 104384 was left Sent. SQL Export was refreshed and produced 42 invoice rows plus 24 customer rows for 12 pending customers.
+- One Sarah / Corpway screenshot is still blocked because the invoice number is cropped out of the image.
 
 ## Important Decisions
 - Use Vite/React because the original invoice generator is React/Vite and should stay visually/functionally the same.
@@ -124,8 +126,9 @@ Create a GitHub-friendly invoice workflow website that:
 - Downgraded the PDF reader to `pdfjs-dist@3.11.174`, disabled the PDF worker, and ran a successful Vite production build for the Safari PDF import fix.
 - Added an explicit legacy PDF worker URL for PDF import and ran a successful Vite production build.
 - Updated PDF import parsing so blank PDF Qty/Amount cells stay blank, then ran a successful Vite production build.
+- Updated workflow saving so blank Qty values stay blank instead of being saved as 1 for future PDF imports.
 
 ## Exact Next Steps
-1. Commit and push the blank Qty/Amount PDF import fix with the rebuilt `dist` output.
-2. Verify GitHub Pages deploy succeeds and serves `index-eEawf8lj.js`.
-3. Ask Chloe to refresh the live site and try the same PDF again.
+1. Commit and push the blank workflow Qty save fix with rebuilt `dist`.
+2. Ask Chloe for the cropped Sarah / Corpway invoice number before importing that one.
+3. Chloe can open SQL Queue and copy Customer rows first, then Invoice rows.

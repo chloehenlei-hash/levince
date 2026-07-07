@@ -43,7 +43,7 @@ function flattenItems(invoice) {
           itemCode: "",
           accountCode: "",
           description: parts.join(" - "),
-          quantity: textValue(line.qty) || 1,
+          quantity: textValue(line.qty),
           uom: "UNIT",
           unitPrice: amount,
           discount: 0,
