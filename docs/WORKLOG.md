@@ -56,7 +56,9 @@ Create a GitHub-friendly invoice workflow website that:
 - Live PDF import then showed `No "GlobalWorkerOptions.workerSrc" specified.`. The parser now sets the legacy PDF worker URL explicitly, and the rebuilt site includes `dist/assets/pdf.worker-CzcBcYLo.js`.
 - PDF import was filling blank Qty/Amount cells as `1` and `0`. The parser now only fills Qty or Amount when the original PDF cell contains a value, recognizes date ranges like `23rd - 24th June`, and allows amount rows with blank Qty.
 - Manual screenshot import completed for 18 visible document numbers from July backlog. User later clarified these documents should all remain unpaid/pending for Desmond to confirm, not marked Paid.
-- `apps-script/Code.gs` now has a `reopenInvoices` backend action prepared locally. It also formats phone columns as text and normalizes common foreign phone prefixes with `+` so Google Sheets does not turn `+82`, `+971`, etc. into `#ERROR!`. The updated script has been copied to the Mac clipboard, but it must be pasted and redeployed in Apps Script before the correction can be executed against the live backend.
+- `apps-script/Code.gs` now has a live `reopenInvoices` backend action. It formats phone columns as text and normalizes common foreign phone prefixes with `+` so Google Sheets does not turn `+82`, `+971`, etc. into `#ERROR!`.
+- After Chloe redeployed Apps Script, `reopenInvoices` was run for `104300`, `104345`, `104382`, `104383`, `104384`, `104385`, `104386`, `104387`, `104388`, `104389`, `104394`, `104395`, `104396`, `104397`, `104398`, `104399`, `104400`, `104401`, `104402`. All 19 are now `Sent` / `Not Uploaded`.
+- Phone corrections were applied for known imported numbers, including `104382` `0123159121`, `104384` `+66632064651`, and `104387` `01679345561`.
 - One Sarah / Corpway screenshot is still blocked because the invoice number is cropped out of the image.
 - New Invoice download auto-save now only applies to documents marked `INVOICE`. `QUOTATION` PDFs can still be downloaded, but they will not be saved into the workflow automatically.
 
@@ -132,7 +134,5 @@ Create a GitHub-friendly invoice workflow website that:
 - Updated workflow saving so blank Qty values stay blank instead of being saved as 1 for future PDF imports.
 
 ## Exact Next Steps
-1. Chloe needs to paste the clipboard contents into Apps Script `Code.gs`, save, and deploy a new Web App version.
-2. After deploy, call `reopenInvoices` for `104300`, `104345`, `104382`, `104383`, `104384`, `104385`, `104386`, `104387`, `104388`, `104389`, `104394`, `104395`, `104396`, `104397`, `104398`, `104399`, `104400`, `104401`, `104402`, including phone overrides for known imported numbers.
-3. Verify `listInvoices` shows those invoices as `Sent` / `Not Uploaded`, and `refreshSqlExport` returns no rows for those documents unless other paid invoices exist.
-4. Ask Chloe for the cropped Sarah / Corpway invoice number before importing that one.
+1. Ask Chloe for the cropped Sarah / Corpway invoice number before importing that one.
+2. Continue testing the live site workflow: Invoice download auto-saves; Quotation download does not save; Invoices page checkmark marks paid; SQL Queue only shows paid/not uploaded documents.
