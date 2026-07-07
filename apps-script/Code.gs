@@ -15,7 +15,7 @@ function doPost(e) {
   try {
     q = req(e);
     setup();
-    const map = { setup: () => ({ ok: true }), listInvoices, createInvoice, markPaid, markUploaded, markCustomersUploaded, cancelInvoice, refreshSqlExport };
+    const map = { setup: () => ({ ok: true }), listInvoices, createInvoice, markPaid, reopenInvoices, markUploaded, markCustomersUploaded, cancelInvoice, refreshSqlExport };
     if (!map[q.action]) throw new Error("Unknown action: " + q.action);
     const out = map[q.action](q);
     return q.transport === "iframe" ? html(out, q.requestId) : json(out);
@@ -46,6 +46,7 @@ function ensure(name, heads) {
   const book = ss(), sheet = book.getSheetByName(name) || book.insertSheet(name);
   const row = sheet.getRange(1, 1, 1, heads.length).getValues()[0];
   if (row.join("|") !== heads.join("|")) sheet.getRange(1, 1, 1, heads.length).setValues([heads]);
+  heads.forEach((h, i) => { if (/PHONE|MOBILE|FAX/.test(h)) sheet.getRange(2, i + 1, sheet.getMaxRows() - 1, 1).setNumberFormat("@"); });
   sheet.setFrozenRows(1); return sheet;
 }
 function last(name) { return ss().getSheetByName(name).getLastRow(); }
@@ -57,6 +58,13 @@ function rows(name) {
 function obj(h, r) { const o = {}; h.forEach((k, i) => o[k] = r[i]); return o; }
 function append(name, h, o) { ss().getSheetByName(name).appendRow(h.map(k => o[k] === undefined ? "" : o[k])); }
 function num(v) { const n = Number(v); return Number.isFinite(n) ? n : 0; }
+function txt(v) { return v == null || String(v) === "#ERROR!" ? "" : String(v).trim(); }
+function phone(v) {
+  const s = txt(v); if (!s) return "";
+  const d = s.replace(/[^\d]/g, ""), c = ["43","60","61","65","66","82","86","852","853","886","88","971"];
+  if (s[0] === "+") return "+" + d;
+  return c.some(x => d.indexOf(x) === 0 && d.length > x.length + 5 && d[0] !== "0") ? "+" + d : s;
+}
 function now() { return new Date(); }
 function user(q) { return q.user || "User"; }
 function log(q, action, id, no, detail) {
@@ -71,7 +79,7 @@ function createInvoice(q) {
   const existing = rows(T.inv).find(r => String(r["Internal Invoice No"]) === no);
   if (existing && !q.overwrite) return { ok: false, code: "DUPLICATE_INVOICE", error: "This document number already exists.", existing: dupInfo(existing) };
   const t = now(), id = existing ? existing["Invoice ID"] : Utilities.getUuid();
-  const row = {"Invoice ID":id,"Internal Invoice No":no,"Document Type":inv.documentType||"INVOICE",Status:existing ? existing.Status || "Sent" : "Sent","SQL Status":existing ? existing["SQL Status"] || "Not Uploaded" : "Not Uploaded","Customer Name":inv.customerName||"","SQL Customer Code":inv.sqlCustomerCode||"","Customer Email":inv.customerEmail||"","Customer Phone":inv.customerPhone||"","Billing Address":inv.billingAddress||"","Invoice Date":inv.invoiceDate||"","Due Date":inv.dueDate||"",Currency:inv.currency||"RM",Subtotal:num(inv.subtotal),Discount:num(inv.discount),Tax:num(inv.tax),Total:num(inv.total),Notes:inv.notes||"",Terms:inv.terms||"",TIN:inv.tin||"","ID Type":inv.idType||"","ID No":inv.idNo||"","PDF File URL":inv.pdfUrl||"","Created By":existing ? existing["Created By"] : user(q),"Created At":existing ? existing["Created At"] : t,"Updated At":t,"Sent At":existing ? existing["Sent At"] : t,"Paid At":existing ? existing["Paid At"] : "","Payment Ref":existing ? existing["Payment Ref"] : "","Payment Proof URL":existing ? existing["Payment Proof URL"] : "","Uploaded To SQL At":existing ? existing["Uploaded To SQL At"] : "","Uploaded By":existing ? existing["Uploaded By"] : ""};
+  const row = {"Invoice ID":id,"Internal Invoice No":no,"Document Type":inv.documentType||"INVOICE",Status:existing ? existing.Status || "Sent" : "Sent","SQL Status":existing ? existing["SQL Status"] || "Not Uploaded" : "Not Uploaded","Customer Name":inv.customerName||"","SQL Customer Code":inv.sqlCustomerCode||"","Customer Email":inv.customerEmail||"","Customer Phone":phone(inv.customerPhone),"Billing Address":inv.billingAddress||"","Invoice Date":inv.invoiceDate||"","Due Date":inv.dueDate||"",Currency:inv.currency||"RM",Subtotal:num(inv.subtotal),Discount:num(inv.discount),Tax:num(inv.tax),Total:num(inv.total),Notes:inv.notes||"",Terms:inv.terms||"",TIN:inv.tin||"","ID Type":inv.idType||"","ID No":inv.idNo||"","PDF File URL":inv.pdfUrl||"","Created By":existing ? existing["Created By"] : user(q),"Created At":existing ? existing["Created At"] : t,"Updated At":t,"Sent At":existing ? existing["Sent At"] : t,"Paid At":existing ? existing["Paid At"] : "","Payment Ref":existing ? existing["Payment Ref"] : "","Payment Proof URL":existing ? existing["Payment Proof URL"] : "","Uploaded To SQL At":existing ? existing["Uploaded To SQL At"] : "","Uploaded By":existing ? existing["Uploaded By"] : ""};
   if (existing) { updateInv(id, row); deleteItems(id); } else append(T.inv, IH, row);
   items.forEach((it, i) => append(T.item, ITH, {"Item ID":Utilities.getUuid(),"Invoice ID":id,"Internal Invoice No":no,Sequence:i+1,"Item Code":it.itemCode||"",Description:it.description||"",Quantity:num(it.quantity),UOM:it.uom||"", "Unit Price":num(it.unitPrice),Discount:num(it.discount),"Tax Code":it.taxCode||"","Tax Amount":num(it.taxAmount),Amount:num(it.amount),"Account Code":it.accountCode||"","Created At":t,"Updated At":t}));
   log(q, existing ? "overwriteInvoice" : "createInvoice", id, no, existing ? "Overwritten" : "Created"); return { ok: true, overwritten: Boolean(existing), invoice: { invoiceId: id, invoiceNo: no } };
@@ -98,6 +106,19 @@ function markPaid(q) {
   append(T.pay, PH, {"Payment ID":Utilities.getUuid(),"Invoice ID":q.invoiceId,"Internal Invoice No":inv["Internal Invoice No"],"Amount Paid":inv.Total,"Payment Date":d,"Payment Ref":q.paymentRef||"","Payment Proof URL":q.proofUrl||"","Marked By":user(q),"Created At":now()});
   log(q, "markPaid", q.invoiceId, inv["Internal Invoice No"], "Paid"); return { ok: true, invoiceNo: inv["Internal Invoice No"] };
 }
+function reopenInvoices(q) {
+  const nos = (q.invoiceNos || []).map(String), invs = rows(T.inv), ids = {}, phones = q.phones || {};
+  invs.forEach(inv => { if (nos.indexOf(String(inv["Internal Invoice No"])) >= 0) ids[inv["Invoice ID"]] = inv["Internal Invoice No"]; });
+  Object.keys(ids).forEach(id => {
+    const no = ids[id], p = { Status:"Sent","SQL Status":"Not Uploaded","Paid At":"","Payment Ref":"","Payment Proof URL":"","Uploaded To SQL At":"","Uploaded By":"","Updated At":now() };
+    if (phones[no] !== undefined) p["Customer Phone"] = phone(phones[no]);
+    updateInv(id, p);
+  });
+  const sh = ss().getSheetByName(T.pay), vals = sh.getDataRange().getValues(), h = vals[0], noIx = h.indexOf("Internal Invoice No");
+  for (let r = vals.length - 1; r > 0; r--) if (nos.indexOf(String(vals[r][noIx])) >= 0) sh.deleteRow(r + 1);
+  log(q, "reopenInvoices", "", "", `Reopened ${Object.keys(ids).length} invoice(s)`); refreshSqlExport(q);
+  return { ok: true, count: Object.keys(ids).length, invoiceNos: Object.keys(ids).map(id => ids[id]) };
+}
 function markUploaded(q) {
   const inv = updateInv(q.invoiceId, { Status:"Uploaded to SQL","SQL Status":"Uploaded to SQL","Uploaded To SQL At":now(),"Uploaded By":user(q),"Updated At":now() });
   log(q, "markUploaded", q.invoiceId, inv["Internal Invoice No"], "Uploaded"); return { ok: true, invoiceNo: inv["Internal Invoice No"] };
@@ -123,7 +144,7 @@ function syncCustomers(invs, s) {
   const cur = rows(T.cust), seen = {}; cur.forEach(c => seen[c["Customer Key"]] = c);
   let next = cur.length + 1;
   invs.forEach(inv => { const k = ckey(inv["Customer Name"]); if (!k || seen[k]) return;
-    const c = {"Customer Key":k,"SQL Customer Code":inv["SQL Customer Code"] || nextCode(next++, s),"Customer Name":inv["Customer Name"],Status:"Pending","Customer Email":inv["Customer Email"],"Customer Phone":inv["Customer Phone"],"Billing Address":inv["Billing Address"],TIN:inv.TIN,"ID Type":inv["ID Type"],"ID No":inv["ID No"],"Source Invoice No":inv["Internal Invoice No"],"Created At":now(),"Updated At":now()};
+    const c = {"Customer Key":k,"SQL Customer Code":inv["SQL Customer Code"] || nextCode(next++, s),"Customer Name":inv["Customer Name"],Status:"Pending","Customer Email":inv["Customer Email"],"Customer Phone":phone(inv["Customer Phone"]),"Billing Address":inv["Billing Address"],TIN:inv.TIN,"ID Type":inv["ID Type"],"ID No":inv["ID No"],"Source Invoice No":inv["Internal Invoice No"],"Created At":now(),"Updated At":now()};
     append(T.cust, CSH, c); seen[k] = c;
   });
   return rows(T.cust);
@@ -137,7 +158,7 @@ function sqlDate(v) {
 function splitAddr(v) { return String(v || "").split(/\n+/).map(x => x.trim().slice(0,60)).filter(Boolean).slice(0,4); }
 function custRow(c, branch, s) {
   const r = Array(CUSTH.length).fill(""), a = splitAddr(c["Billing Address"]), set = (col, v) => { const i = CUSTH.indexOf(col); if (i >= 0) r[i] = v == null ? "" : v; };
-  set("CODE(10)",c["SQL Customer Code"]); set("CONTROLACCOUNT(10)",pick(s,"DEFAULT_CUSTOMER_CONTROL_ACCOUNT","300-000")); set("COMPANYNAME(100)",c["Customer Name"]); set("COMPANYCATEGORY(10)","----"); set("AREA(10)","----"); set("AGENT(10)",pick(s,"DEFAULT_AGENT","----")); set("CREDITTERM(10)",pick(s,"DEFAULT_CUSTOMER_CREDIT_TERM","C.O.D.")); set("CREDITLIMIT",0); set("OVERDUELIMIT",0); set("STATEMENTTYPE","O"); set("CURRENCYCODE(6)","----"); set("ALLOWEXCEEDCREDITLIMIT","T"); set("ADDPDCTOCRLIMIT","T"); set("AGINGON","I"); set("STATUS","A"); set("TIN(14)",c.TIN); set("IDTYPE",c["ID Type"] || 0); set("IDNO(20)",c["ID No"]); set("SUBMISSIONTYPE",pick(s,"DEFAULT_SUBMISSION_TYPE","17")); set("_BRANCHNAME(100)",branch); set("_ADDRESS1(60)",a[0]||""); set("_ADDRESS2(60)",a[1]||""); set("_ADDRESS3(60)",a[2]||""); set("_ADDRESS4(60)",a[3]||""); set("_COUNTRY(2)",pick(s,"DEFAULT_COUNTRY","MY")); set("_PHONE1(200)",c["Customer Phone"]); set("_EMAIL(200)",c["Customer Email"]); return r;
+  set("CODE(10)",c["SQL Customer Code"]); set("CONTROLACCOUNT(10)",pick(s,"DEFAULT_CUSTOMER_CONTROL_ACCOUNT","300-000")); set("COMPANYNAME(100)",c["Customer Name"]); set("COMPANYCATEGORY(10)","----"); set("AREA(10)","----"); set("AGENT(10)",pick(s,"DEFAULT_AGENT","----")); set("CREDITTERM(10)",pick(s,"DEFAULT_CUSTOMER_CREDIT_TERM","C.O.D.")); set("CREDITLIMIT",0); set("OVERDUELIMIT",0); set("STATEMENTTYPE","O"); set("CURRENCYCODE(6)","----"); set("ALLOWEXCEEDCREDITLIMIT","T"); set("ADDPDCTOCRLIMIT","T"); set("AGINGON","I"); set("STATUS","A"); set("TIN(14)",c.TIN); set("IDTYPE",c["ID Type"] || 0); set("IDNO(20)",c["ID No"]); set("SUBMISSIONTYPE",pick(s,"DEFAULT_SUBMISSION_TYPE","17")); set("_BRANCHNAME(100)",branch); set("_ADDRESS1(60)",a[0]||""); set("_ADDRESS2(60)",a[1]||""); set("_ADDRESS3(60)",a[2]||""); set("_ADDRESS4(60)",a[3]||""); set("_COUNTRY(2)",pick(s,"DEFAULT_COUNTRY","MY")); set("_PHONE1(200)",phone(c["Customer Phone"])); set("_EMAIL(200)",c["Customer Email"]); return r;
 }
 function sqlRow(inv, item, seq, s, cm) {
   const r = Array(SQLH.length).fill(""), a = splitAddr(inv["Billing Address"]);
@@ -145,7 +166,7 @@ function sqlRow(inv, item, seq, s, cm) {
   const c = cm[ckey(inv["Customer Name"])] || {};
   set("DOCNO(20)","<<New>>"); set("DOCDATE",sqlDate(inv["Invoice Date"]||inv["Paid At"])); set("CODE(10)",c["SQL Customer Code"]||inv["SQL Customer Code"]||pick(s,"DEFAULT_CUSTOMER_CODE",""));
   set("COMPANYNAME(100)",inv["Customer Name"]); set("ADDRESS1(60)",a[0]||""); set("ADDRESS2(60)",a[1]||""); set("ADDRESS3(60)",a[2]||""); set("ADDRESS4(60)",a[3]||"");
-  set("COUNTRY(2)",pick(s,"DEFAULT_COUNTRY","MY")); set("PHONE1(200)",inv["Customer Phone"]); set("AGENT(10)",pick(s,"DEFAULT_AGENT","----")); set("TERMS(10)",inv.Terms||pick(s,"DEFAULT_TERMS","C.O.D."));
+  set("COUNTRY(2)",pick(s,"DEFAULT_COUNTRY","MY")); set("PHONE1(200)",phone(inv["Customer Phone"])); set("AGENT(10)",pick(s,"DEFAULT_AGENT","----")); set("TERMS(10)",inv.Terms||pick(s,"DEFAULT_TERMS","C.O.D."));
   set("DESCRIPTION(200)",inv.Notes||pick(s,"DEFAULT_DESCRIPTION","Payment request")); set("PROJECT(20)",pick(s,"DEFAULT_PROJECT","----")); set("DOCREF1",inv["Internal Invoice No"]);
   set("TIN(14)",inv.TIN); set("IDTYPE",inv["ID Type"]); set("IDNO(20)",inv["ID No"]); set("SUBMISSIONTYPE",pick(s,"DEFAULT_SUBMISSION_TYPE","17"));
   set("_SEQ",seq); set("_ACCOUNT(10)",item["Account Code"]||pick(s,"DEFAULT_ACCOUNT_CODE","510-000")); set("_ITEMCODE(30)",item["Item Code"]); set("_DESCRIPTION(200)",item.Description);

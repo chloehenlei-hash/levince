@@ -343,6 +343,8 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "" }) {
   async function autoSaveDownloadedInvoice(fileName) {
     if (!onSaveInvoice) return;
     const savedInvoice = generatedInvoiceRef.current || invoice;
+    const documentType = String(savedInvoice.documentLabel || "INVOICE").trim().toUpperCase();
+    if (documentType !== "INVOICE") return;
     const saveKey = `${savedInvoice.receiptNumber || ""}|${fileName}|${generatedBlob?.size || 0}`;
     if (lastAutoSavedKey.current === saveKey) return;
     const saved = await onSaveInvoice({
