@@ -63,6 +63,7 @@ Create a GitHub-friendly invoice workflow website that:
 - New Invoice download auto-save now only applies to documents marked `INVOICE`. `QUOTATION` PDFs can still be downloaded, but they will not be saved into the workflow automatically.
 - Invoices page now defaults to the latest 5 invoices for the selected status, with `Load more` to show the full list and an invoice-number search next to the status filter/Refresh button.
 - Workflow UX polish added: Paid actions now show a short-lived `Undo Paid`; Invoices table shows `Paid At`; search supports invoice number or customer name; New Invoice warns when the current document number already exists; SQL Queue shows clearer Step 1/Step 2 readiness, copy buttons turn green after copying, and SQL warnings highlight pending customers, missing phones, foreign currency, or negative rows.
+- Invoices page Pay feedback was made explicit: clicking `Mark Paid` now immediately turns the row green before Google Sheet finishes syncing, keeps that invoice briefly visible in Active, and paid rows now have a `Not Paid` button to move them back to unpaid.
 
 ## Important Decisions
 - Use Vite/React because the original invoice generator is React/Vite and should stay visually/functionally the same.
@@ -136,7 +137,8 @@ Create a GitHub-friendly invoice workflow website that:
 - Added an explicit legacy PDF worker URL for PDF import and ran a successful Vite production build.
 - Updated PDF import parsing so blank PDF Qty/Amount cells stay blank, then ran a successful Vite production build.
 - Updated workflow saving so blank Qty values stay blank instead of being saved as 1 for future PDF imports.
+- Ran Vite production build successfully after improving Pay / Not Paid feedback.
 
 ## Exact Next Steps
 1. Ask Chloe for the cropped Sarah / Corpway invoice number before importing that one.
-2. Continue testing the live site workflow: Invoice download auto-saves; Quotation download does not save; Invoices page latest-5/search/load-more/customer-search behavior works; checkmark marks paid and Undo reopens it; SQL Queue only shows paid/not uploaded documents and Step 1 blocks Step 2 when needed.
+2. Continue testing the live site workflow: Invoice download auto-saves; Quotation download does not save; Invoices page latest-5/search/load-more/customer-search behavior works; `Mark Paid` instantly turns the row green, `Not Paid` reopens it, and SQL Queue only shows paid/not uploaded documents with Step 1 blocking Step 2 when needed.

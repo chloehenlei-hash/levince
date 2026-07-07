@@ -1054,6 +1054,14 @@ textarea:focus {
   font-weight: 780;
 }
 
+.workflow-row-paid td {
+  background: #f7fff9;
+}
+
+.workflow-row-paid td:first-child {
+  box-shadow: inset 4px 0 0 #3aa96c;
+}
+
 .workflow-status {
   display: inline-flex;
   min-height: 25px;
@@ -1077,6 +1085,17 @@ textarea:focus {
   background: #e8f6ee;
   color: #237a4b;
   opacity: 1;
+}
+
+.not-paid-button {
+  border-color: #efd0d0;
+  background: #fff7f7;
+  color: var(--brand);
+}
+
+.not-paid-button:hover {
+  border-color: #e5adad;
+  background: #fff;
 }
 
 .upload-done-button.is-done {

@@ -149,6 +149,8 @@ export default function App() {
   const [invoiceSearch, setInvoiceSearch] = useState("");
   const [showAllInvoices, setShowAllInvoices] = useState(false);
   const [recentPaidUndo, setRecentPaidUndo] = useState(null);
+  const [markingPaidNo, setMarkingPaidNo] = useState("");
+  const [reopeningNo, setReopeningNo] = useState("");
   const [copiedRowsLabel, setCopiedRowsLabel] = useState("");
 
   const paidQueue = useMemo(
@@ -228,31 +230,59 @@ export default function App() {
   }
 
   async function markPaid(invoice) {
+    const invoiceNo = String(invoice["Internal Invoice No"] || "");
+    const paidDate = new Date().toISOString().slice(0, 10);
+    setMarkingPaidNo(invoiceNo);
+    setRecentPaidUndo({ invoiceNo, customerName: invoice["Customer Name"] });
+    setInvoices((current) => current.map((row) => (
+      row["Invoice ID"] === invoice["Invoice ID"]
+        ? { ...row, Status: "Paid", "SQL Status": "Not Uploaded", "Paid At": paidDate }
+        : row
+    )));
+    setMessage(`${invoiceNo} is marked Paid. It will turn green here first, then move to SQL Queue.`);
     try {
       await callWorkflowApi("markPaid", {
         invoiceId: invoice["Invoice ID"],
-        paymentDate: new Date().toISOString().slice(0, 10),
+        paymentDate: paidDate,
         paymentRef: "",
         proofUrl: "",
       });
       await loadInvoices();
-      setRecentPaidUndo({ invoiceNo: invoice["Internal Invoice No"], customerName: invoice["Customer Name"] });
-      setMessage(`Paid recorded for ${invoice["Internal Invoice No"]}.`);
+      setRecentPaidUndo({ invoiceNo, customerName: invoice["Customer Name"] });
+      setMessage(`${invoiceNo} is now Paid. You can undo if this was a mistake.`);
     } catch (error) {
+      await loadInvoices();
       setMessage(error.message);
+    } finally {
+      setMarkingPaidNo("");
+    }
+  }
+
+  async function reopenInvoice(invoice, label = "Payment mark undone") {
+    const invoiceNo = String(invoice["Internal Invoice No"] || invoice.invoiceNo || "");
+    if (!invoiceNo) return;
+    setReopeningNo(invoiceNo);
+    setInvoices((current) => current.map((row) => (
+      String(row["Internal Invoice No"] || "") === invoiceNo
+        ? { ...row, Status: "Sent", "SQL Status": "Not Uploaded", "Paid At": "" }
+        : row
+    )));
+    if (String(recentPaidUndo?.invoiceNo || "") === invoiceNo) setRecentPaidUndo(null);
+    try {
+      await callWorkflowApi("reopenInvoices", { invoiceNos: [invoiceNo] });
+      await loadInvoices();
+      setMessage(`${label} for ${invoiceNo}.`);
+    } catch (error) {
+      await loadInvoices();
+      setMessage(error.message);
+    } finally {
+      setReopeningNo("");
     }
   }
 
   async function undoRecentPaid() {
     if (!recentPaidUndo) return;
-    try {
-      await callWorkflowApi("reopenInvoices", { invoiceNos: [String(recentPaidUndo.invoiceNo)] });
-      await loadInvoices();
-      setMessage(`Payment mark undone for ${recentPaidUndo.invoiceNo}.`);
-      setRecentPaidUndo(null);
-    } catch (error) {
-      setMessage(error.message);
-    }
+    await reopenInvoice({ "Internal Invoice No": recentPaidUndo.invoiceNo }, "Payment mark undone");
   }
 
   async function markInvoicesUploaded() {
@@ -321,11 +351,14 @@ export default function App() {
     }
   }
 
+  const recentPaidNo = String(recentPaidUndo?.invoiceNo || "");
   const filteredInvoices = invoices.filter((invoice) => {
+    const invoiceNo = String(invoice["Internal Invoice No"] || "");
+    const isRecentPaid = recentPaidNo && invoiceNo === recentPaidNo && invoice.Status === "Paid";
     if (filter === "all") return true;
     if (filter === "paid") return invoice.Status === "Paid" && invoice["SQL Status"] !== "Uploaded to SQL";
     if (filter === "uploaded") return invoice["SQL Status"] === "Uploaded to SQL";
-    return invoice.Status !== "Paid" && invoice.Status !== "Uploaded to SQL" && invoice.Status !== "Cancelled";
+    return isRecentPaid || (invoice.Status !== "Paid" && invoice.Status !== "Uploaded to SQL" && invoice.Status !== "Cancelled");
   }).filter((invoice) => {
     const search = invoiceSearch.trim().toLowerCase();
     if (!search) return true;
@@ -415,11 +448,16 @@ export default function App() {
                 </tr>
               </thead>
               <tbody>
-                {visibleInvoices.length ? visibleInvoices.map((invoice) => (
-                  <tr key={invoice["Invoice ID"]}>
+                {visibleInvoices.length ? visibleInvoices.map((invoice) => {
+                  const invoiceNo = String(invoice["Internal Invoice No"] || "");
+                  const isPaid = invoice.Status === "Paid";
+                  const isMarking = markingPaidNo === invoiceNo;
+                  const isReopening = reopeningNo === invoiceNo;
+                  return (
+                  <tr key={invoice["Invoice ID"]} className={isPaid ? "workflow-row-paid" : ""}>
                     <td><strong>{invoice["Internal Invoice No"]}</strong></td>
                     <td>{invoice["Customer Name"]}</td>
-                    <td>{String(invoice["Invoice Date"] || "").slice(0, 12)}</td>
+                    <td>{displayDate(invoice["Invoice Date"])}</td>
                     <td>{money(invoice.Total, invoice.Currency)}</td>
                     <td><span className={`workflow-status ${statusClass(invoice.Status)}`}>{invoice.Status}</span></td>
                     <td>{displayDate(invoice["Paid At"])}</td>
@@ -427,17 +465,28 @@ export default function App() {
                       <div className="workflow-row-actions">
                         <button
                           type="button"
-                          className={`secondary-button paid-check-button ${invoice.Status === "Paid" ? "is-paid" : ""}`}
+                          className={`secondary-button paid-check-button ${isPaid ? "is-paid" : ""}`}
                           onClick={() => markPaid(invoice)}
-                          disabled={invoice.Status === "Paid"}
+                          disabled={isPaid || isMarking || isReopening}
                         >
                           <CheckCircle2 aria-hidden="true" />
-                          Paid
+                          {isPaid ? "Paid" : isMarking ? "Marking..." : "Mark Paid"}
                         </button>
+                        {isPaid ? (
+                          <button
+                            type="button"
+                            className="secondary-button not-paid-button"
+                            onClick={() => reopenInvoice(invoice, "Moved back to Not Paid")}
+                            disabled={isReopening}
+                          >
+                            {isReopening ? "Moving..." : "Not Paid"}
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
-                )) : (
+                  );
+                }) : (
                   <tr><td colSpan="7" className="workflow-empty">No invoices found.</td></tr>
                 )}
               </tbody>
