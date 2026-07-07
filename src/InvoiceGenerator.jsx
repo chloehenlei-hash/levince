@@ -82,7 +82,7 @@ function Section({ title, children }) {
   );
 }
 
-export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "" }) {
+export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "", existingInvoices = [] }) {
   const [invoice, setInvoice] = useState(readStoredDraft);
   const [previewUrl, setPreviewUrl] = useState("");
   const [generatedBlob, setGeneratedBlob] = useState(null);
@@ -101,6 +101,11 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "" }) {
   const missingFields = useMemo(() => validateInvoice(invoice), [invoice]);
   const subtotal = useMemo(() => getInvoiceSubtotal(invoice), [invoice]);
   const total = useMemo(() => getInvoiceTotal(invoice), [invoice]);
+  const duplicateInvoice = useMemo(() => {
+    const no = String(invoice.receiptNumber || "").trim();
+    if (!no) return null;
+    return existingInvoices.find((row) => String(row["Internal Invoice No"] || "").trim() === no) || null;
+  }, [existingInvoices, invoice.receiptNumber]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(invoice));
@@ -439,6 +444,9 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "" }) {
               placeholder="104247"
               onChange={(value) => updateInvoice("receiptNumber", value)}
             />
+            {duplicateInvoice ? (
+              <p className="duplicate-warning">Existing record: {duplicateInvoice["Customer Name"] || "Unknown customer"} · {duplicateInvoice.Status || "Saved"}</p>
+            ) : null}
           </div>
           <div className="topbar-actions">
             <button type="button" className="ghost-button" onClick={resetToSample} title="Load sample invoice">

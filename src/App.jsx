@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, ClipboardList, Database, FilePlus2, UploadCloud } from "lucide-react";
 import InvoiceGenerator from "./InvoiceGenerator.jsx";
 import { callWorkflowApi } from "./workflowApi.js";
@@ -25,6 +25,14 @@ function parseAmount(value) {
 function textValue(value) {
   const text = String(value || "").trim();
   return text === "-" ? "" : text;
+}
+
+function displayDate(value) {
+  const text = String(value || "").trim();
+  if (!text) return "-";
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+  return text.slice(0, 12);
 }
 
 function getWorkflowCustomerName(invoice) {
@@ -140,11 +148,35 @@ export default function App() {
   const [filter, setFilter] = useState("active");
   const [invoiceSearch, setInvoiceSearch] = useState("");
   const [showAllInvoices, setShowAllInvoices] = useState(false);
+  const [recentPaidUndo, setRecentPaidUndo] = useState(null);
+  const [copiedRowsLabel, setCopiedRowsLabel] = useState("");
 
   const paidQueue = useMemo(
     () => invoices.filter((invoice) => invoice.Status === "Paid" && invoice["SQL Status"] !== "Uploaded to SQL"),
     [invoices],
   );
+  const customerStepPending = customerQueue.length > 0 && !customerUploadDone;
+  const sqlWarnings = useMemo(() => {
+    const warnings = [];
+    if (customerStepPending) warnings.push("New customers detected. Upload Customer rows before Invoice rows.");
+    const missingPhone = paidQueue.filter((invoice) => !textValue(invoice["Customer Phone"]));
+    if (missingPhone.length) warnings.push(`${missingPhone.length} paid invoice(s) have no customer phone.`);
+    const foreignCurrency = paidQueue.filter((invoice) => textValue(invoice.Currency) && textValue(invoice.Currency) !== "RM");
+    if (foreignCurrency.length) warnings.push(`${foreignCurrency.length} paid invoice(s) are not RM currency.`);
+    const negativeRows = items.filter((item) => paidQueue.some((invoice) => invoice["Invoice ID"] === item["Invoice ID"]) && parseAmount(item.Amount) < 0);
+    if (negativeRows.length) warnings.push(`${negativeRows.length} SQL item row(s) are negative amount rows.`);
+    return warnings;
+  }, [customerStepPending, items, paidQueue]);
+
+  useEffect(() => {
+    if (!recentPaidUndo) return undefined;
+    const timer = window.setTimeout(() => setRecentPaidUndo(null), 10000);
+    return () => window.clearTimeout(timer);
+  }, [recentPaidUndo]);
+
+  useEffect(() => {
+    loadInvoices();
+  }, []);
 
   async function loadInvoices() {
     try {
@@ -195,16 +227,29 @@ export default function App() {
     }
   }
 
-  async function markPaid(invoiceId) {
+  async function markPaid(invoice) {
     try {
       await callWorkflowApi("markPaid", {
-        invoiceId,
+        invoiceId: invoice["Invoice ID"],
         paymentDate: new Date().toISOString().slice(0, 10),
         paymentRef: "",
         proofUrl: "",
       });
       await loadInvoices();
-      setMessage("Paid recorded. Invoice moved to SQL Queue.");
+      setRecentPaidUndo({ invoiceNo: invoice["Internal Invoice No"], customerName: invoice["Customer Name"] });
+      setMessage(`Paid recorded for ${invoice["Internal Invoice No"]}.`);
+    } catch (error) {
+      setMessage(error.message);
+    }
+  }
+
+  async function undoRecentPaid() {
+    if (!recentPaidUndo) return;
+    try {
+      await callWorkflowApi("reopenInvoices", { invoiceNos: [String(recentPaidUndo.invoiceNo)] });
+      await loadInvoices();
+      setMessage(`Payment mark undone for ${recentPaidUndo.invoiceNo}.`);
+      setRecentPaidUndo(null);
     } catch (error) {
       setMessage(error.message);
     }
@@ -251,6 +296,8 @@ export default function App() {
       return;
     }
     await navigator.clipboard.writeText(text);
+    setCopiedRowsLabel(label);
+    window.setTimeout(() => setCopiedRowsLabel((current) => (current === label ? "" : current)), 2500);
     setMessage(`${label} rows copied.`);
   }
 
@@ -280,9 +327,10 @@ export default function App() {
     if (filter === "uploaded") return invoice["SQL Status"] === "Uploaded to SQL";
     return invoice.Status !== "Paid" && invoice.Status !== "Uploaded to SQL" && invoice.Status !== "Cancelled";
   }).filter((invoice) => {
-    const search = invoiceSearch.trim();
+    const search = invoiceSearch.trim().toLowerCase();
     if (!search) return true;
-    return String(invoice["Internal Invoice No"] || "").includes(search);
+    return String(invoice["Internal Invoice No"] || "").toLowerCase().includes(search)
+      || String(invoice["Customer Name"] || "").toLowerCase().includes(search);
   }).sort(sortInvoicesByLatest);
   const limitInvoices = !invoiceSearch.trim() && !showAllInvoices;
   const visibleInvoices = limitInvoices ? filteredInvoices.slice(0, 5) : filteredInvoices;
@@ -303,11 +351,20 @@ export default function App() {
             </button>
           ))}
         </div>
-        {message ? <p className="workflow-message">{message}</p> : null}
+        {message || recentPaidUndo ? (
+          <div className="workflow-message-row">
+            {message ? <p className="workflow-message">{message}</p> : null}
+            {recentPaidUndo ? (
+              <button type="button" className="secondary-button undo-button" onClick={undoRecentPaid}>
+                Undo Paid
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {view === "new" ? (
-        <InvoiceGenerator onSaveInvoice={saveGeneratedInvoice} saveStatus={saveStatus} />
+        <InvoiceGenerator onSaveInvoice={saveGeneratedInvoice} saveStatus={saveStatus} existingInvoices={invoices} />
       ) : null}
 
       {view === "invoices" ? (
@@ -330,10 +387,9 @@ export default function App() {
               <input
                 className="invoice-search-input"
                 value={invoiceSearch}
-                inputMode="numeric"
-                placeholder="Search invoice no."
+                placeholder="Search no. or customer"
                 onChange={(event) => {
-                  setInvoiceSearch(event.target.value.replace(/[^\d]/g, ""));
+                  setInvoiceSearch(event.target.value);
                   setShowAllInvoices(false);
                 }}
               />
@@ -354,6 +410,7 @@ export default function App() {
                   <th>Date</th>
                   <th>Total</th>
                   <th>Status</th>
+                  <th>Paid At</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -365,12 +422,13 @@ export default function App() {
                     <td>{String(invoice["Invoice Date"] || "").slice(0, 12)}</td>
                     <td>{money(invoice.Total, invoice.Currency)}</td>
                     <td><span className={`workflow-status ${statusClass(invoice.Status)}`}>{invoice.Status}</span></td>
+                    <td>{displayDate(invoice["Paid At"])}</td>
                     <td>
                       <div className="workflow-row-actions">
                         <button
                           type="button"
                           className={`secondary-button paid-check-button ${invoice.Status === "Paid" ? "is-paid" : ""}`}
-                          onClick={() => markPaid(invoice["Invoice ID"])}
+                          onClick={() => markPaid(invoice)}
                           disabled={invoice.Status === "Paid"}
                         >
                           <CheckCircle2 aria-hidden="true" />
@@ -380,7 +438,7 @@ export default function App() {
                     </td>
                   </tr>
                 )) : (
-                  <tr><td colSpan="6" className="workflow-empty">No invoices found.</td></tr>
+                  <tr><td colSpan="7" className="workflow-empty">No invoices found.</td></tr>
                 )}
               </tbody>
             </table>
@@ -412,15 +470,24 @@ export default function App() {
             </div>
           </header>
           <p className="hint">If new customers appear, import Customer rows into SQL first. Then import Invoice rows.</p>
+          {sqlWarnings.length ? (
+            <div className="workflow-warning-panel">
+              {sqlWarnings.map((warning) => <p key={warning}>{warning}</p>)}
+            </div>
+          ) : null}
           <section className="workflow-section">
             <div className="workflow-page-header compact">
               <div>
                 <p className="brand-label">Step 1</p>
-                <h2>Customer Import</h2>
+                <h2>Customer Import <span className={`step-state ${customerUploadDone ? "is-done" : customerQueue.length ? "is-ready" : ""}`}>{customerUploadDone ? "Done" : customerQueue.length ? "Ready" : "No new customers"}</span></h2>
               </div>
               <div className="workflow-row-actions">
-                <button type="button" className="secondary-button" onClick={() => copyRows(customerRows, "Customer")}>
-                  Copy Customer Rows
+                <button
+                  type="button"
+                  className={`secondary-button ${copiedRowsLabel === "Customer" ? "is-copied" : ""}`}
+                  onClick={() => copyRows(customerRows, "Customer")}
+                >
+                  {copiedRowsLabel === "Customer" ? "Copied" : "Copy Customer Rows"}
                 </button>
                 <button
                   type="button"
@@ -465,16 +532,22 @@ export default function App() {
             <div className="workflow-page-header compact">
               <div>
                 <p className="brand-label">Step 2</p>
-                <h2>Invoice Import</h2>
+                <h2>Invoice Import <span className={`step-state ${invoiceUploadDone ? "is-done" : customerStepPending ? "is-blocked" : paidQueue.length ? "is-ready" : ""}`}>{invoiceUploadDone ? "Done" : customerStepPending ? "Finish Step 1 first" : paidQueue.length ? "Ready" : "No paid invoices"}</span></h2>
               </div>
               <div className="workflow-row-actions">
-                <button type="button" className="secondary-button" onClick={() => copyRows(sqlRows, "Invoice")}>
-                  Copy Invoice Rows
+                <button
+                  type="button"
+                  className={`secondary-button ${copiedRowsLabel === "Invoice" ? "is-copied" : ""}`}
+                  onClick={() => copyRows(sqlRows, "Invoice")}
+                  disabled={customerStepPending}
+                >
+                  {copiedRowsLabel === "Invoice" ? "Copied" : "Copy Invoice Rows"}
                 </button>
                 <button
                   type="button"
                   className={`secondary-button upload-done-button ${invoiceUploadDone ? "is-done" : ""}`}
                   onClick={markInvoicesUploaded}
+                  disabled={customerStepPending}
                 >
                   {invoiceUploadDone ? <CheckCircle2 aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
                   {invoiceUploadDone ? "All Uploaded" : "Invoices Uploaded"}

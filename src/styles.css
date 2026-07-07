@@ -117,6 +117,14 @@ h2 {
   box-shadow: 0 12px 32px rgba(37, 33, 27, 0.08);
 }
 
+.duplicate-warning {
+  grid-column: 1 / -1;
+  margin: -2px 0 0;
+  color: #9a6500;
+  font-size: 0.84rem;
+  font-weight: 720;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 0.96fr) minmax(420px, 0.82fr);
@@ -541,6 +549,17 @@ textarea:focus {
   font-weight: 720;
 }
 
+.secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.secondary-button.is-copied {
+  border-color: #97d9b7;
+  background: #dff5e9;
+  color: #176a43;
+}
+
 .ghost-button {
   background: rgba(255, 255, 255, 0.66);
 }
@@ -881,6 +900,18 @@ textarea:focus {
   font-size: 0.9rem;
 }
 
+.workflow-message-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.undo-button {
+  min-height: 34px;
+  padding: 0 11px;
+}
+
 .workflow-save-status {
   margin: 0;
 }
@@ -909,6 +940,35 @@ textarea:focus {
 .workflow-page h2 {
   margin: 0;
   font-size: 1.15rem;
+}
+
+.step-state {
+  display: inline-flex;
+  min-height: 23px;
+  align-items: center;
+  margin-left: 8px;
+  border-radius: 999px;
+  padding: 0 9px;
+  background: #f1f1ed;
+  color: #55585d;
+  font-size: 0.72rem;
+  font-weight: 780;
+  vertical-align: middle;
+}
+
+.step-state.is-ready {
+  background: #fff5df;
+  color: #9a6500;
+}
+
+.step-state.is-done {
+  background: #e8f6ee;
+  color: #237a4b;
+}
+
+.step-state.is-blocked {
+  background: #fdeaea;
+  color: var(--brand);
 }
 
 .workflow-section {
@@ -941,6 +1001,23 @@ textarea:focus {
   display: block;
   margin-top: 6px;
   font-size: 1.15rem;
+}
+
+.workflow-warning-panel {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 18px;
+  border: 1px solid #edd7a7;
+  border-radius: 7px;
+  background: #fffaf0;
+  padding: 12px 14px;
+}
+
+.workflow-warning-panel p {
+  margin: 0;
+  color: #805600;
+  font-size: 0.88rem;
+  font-weight: 680;
 }
 
 .workflow-table-wrap {

@@ -62,6 +62,7 @@ Create a GitHub-friendly invoice workflow website that:
 - One Sarah / Corpway screenshot is still blocked because the invoice number is cropped out of the image.
 - New Invoice download auto-save now only applies to documents marked `INVOICE`. `QUOTATION` PDFs can still be downloaded, but they will not be saved into the workflow automatically.
 - Invoices page now defaults to the latest 5 invoices for the selected status, with `Load more` to show the full list and an invoice-number search next to the status filter/Refresh button.
+- Workflow UX polish added: Paid actions now show a short-lived `Undo Paid`; Invoices table shows `Paid At`; search supports invoice number or customer name; New Invoice warns when the current document number already exists; SQL Queue shows clearer Step 1/Step 2 readiness, copy buttons turn green after copying, and SQL warnings highlight pending customers, missing phones, foreign currency, or negative rows.
 
 ## Important Decisions
 - Use Vite/React because the original invoice generator is React/Vite and should stay visually/functionally the same.
@@ -75,6 +76,7 @@ Create a GitHub-friendly invoice workflow website that:
 - Frontend changes must include a fresh local `dist` build because GitHub Pages now publishes the committed `dist` artifact directly.
 - Quotation documents should stay outside the invoice workflow unless Chloe manually changes them into invoices.
 - Desmond's Invoices page should stay compact by default: show latest 5, search invoice number for direct lookup, then mark paid from the found row.
+- Avoid silent mistakes in the workflow: paid marks should be reversible briefly, copy actions should show visual confirmation, and SQL export should clearly block/flag invoice upload when customer import is still pending.
 
 ## Commands Already Run
 - Checked current folder contents.
@@ -137,4 +139,4 @@ Create a GitHub-friendly invoice workflow website that:
 
 ## Exact Next Steps
 1. Ask Chloe for the cropped Sarah / Corpway invoice number before importing that one.
-2. Continue testing the live site workflow: Invoice download auto-saves; Quotation download does not save; Invoices page latest-5/search/load-more behavior works; checkmark marks paid; SQL Queue only shows paid/not uploaded documents.
+2. Continue testing the live site workflow: Invoice download auto-saves; Quotation download does not save; Invoices page latest-5/search/load-more/customer-search behavior works; checkmark marks paid and Undo reopens it; SQL Queue only shows paid/not uploaded documents and Step 1 blocks Step 2 when needed.
