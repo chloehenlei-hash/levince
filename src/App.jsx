@@ -138,6 +138,8 @@ export default function App() {
   const [customerUploadDone, setCustomerUploadDone] = useState(false);
   const [invoiceUploadDone, setInvoiceUploadDone] = useState(false);
   const [filter, setFilter] = useState("active");
+  const [invoiceSearch, setInvoiceSearch] = useState("");
+  const [showAllInvoices, setShowAllInvoices] = useState(false);
 
   const paidQueue = useMemo(
     () => invoices.filter((invoice) => invoice.Status === "Paid" && invoice["SQL Status"] !== "Uploaded to SQL"),
@@ -154,6 +156,13 @@ export default function App() {
     } catch (error) {
       setMessage(error.message);
     }
+  }
+
+  function sortInvoicesByLatest(a, b) {
+    const dateA = Date.parse(a["Updated At"] || a["Created At"] || a["Sent At"] || a["Invoice Date"] || "");
+    const dateB = Date.parse(b["Updated At"] || b["Created At"] || b["Sent At"] || b["Invoice Date"] || "");
+    if (Number.isFinite(dateA) || Number.isFinite(dateB)) return (Number.isFinite(dateB) ? dateB : 0) - (Number.isFinite(dateA) ? dateA : 0);
+    return Number(String(b["Internal Invoice No"] || "").replace(/\D/g, "")) - Number(String(a["Internal Invoice No"] || "").replace(/\D/g, ""));
   }
 
   async function saveGeneratedInvoice(payload) {
@@ -265,12 +274,18 @@ export default function App() {
     }
   }
 
-  const visibleInvoices = invoices.filter((invoice) => {
+  const filteredInvoices = invoices.filter((invoice) => {
     if (filter === "all") return true;
     if (filter === "paid") return invoice.Status === "Paid" && invoice["SQL Status"] !== "Uploaded to SQL";
     if (filter === "uploaded") return invoice["SQL Status"] === "Uploaded to SQL";
     return invoice.Status !== "Paid" && invoice.Status !== "Uploaded to SQL" && invoice.Status !== "Cancelled";
-  });
+  }).filter((invoice) => {
+    const search = invoiceSearch.trim();
+    if (!search) return true;
+    return String(invoice["Internal Invoice No"] || "").includes(search);
+  }).sort(sortInvoicesByLatest);
+  const limitInvoices = !invoiceSearch.trim() && !showAllInvoices;
+  const visibleInvoices = limitInvoices ? filteredInvoices.slice(0, 5) : filteredInvoices;
 
   return (
     <>
@@ -303,12 +318,25 @@ export default function App() {
               <h1>Invoices</h1>
             </div>
             <div className="workflow-row-actions">
-              <select value={filter} onChange={(event) => setFilter(event.target.value)}>
+              <select value={filter} onChange={(event) => {
+                setFilter(event.target.value);
+                setShowAllInvoices(false);
+              }}>
                 <option value="active">Active</option>
                 <option value="paid">Paid Queue</option>
                 <option value="uploaded">Uploaded</option>
                 <option value="all">All</option>
               </select>
+              <input
+                className="invoice-search-input"
+                value={invoiceSearch}
+                inputMode="numeric"
+                placeholder="Search invoice no."
+                onChange={(event) => {
+                  setInvoiceSearch(event.target.value.replace(/[^\d]/g, ""));
+                  setShowAllInvoices(false);
+                }}
+              />
               <button type="button" className="secondary-button" onClick={loadInvoices}>Refresh</button>
             </div>
           </header>
@@ -352,11 +380,22 @@ export default function App() {
                     </td>
                   </tr>
                 )) : (
-                  <tr><td colSpan="6" className="workflow-empty">No invoices loaded.</td></tr>
+                  <tr><td colSpan="6" className="workflow-empty">No invoices found.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
+          {!invoiceSearch.trim() && filteredInvoices.length > 5 ? (
+            <div className="workflow-load-more">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setShowAllInvoices((current) => !current)}
+              >
+                {showAllInvoices ? "Show latest 5" : `Load more (${filteredInvoices.length - 5})`}
+              </button>
+            </div>
+          ) : null}
         </main>
       ) : null}
 

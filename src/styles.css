@@ -898,6 +898,10 @@ textarea:focus {
   margin-bottom: 12px;
 }
 
+.invoice-search-input {
+  width: min(220px, 100%);
+}
+
 .workflow-page h1 {
   font-size: clamp(2rem, 4vw, 4.15rem);
 }
@@ -945,6 +949,12 @@ textarea:focus {
   border-radius: 7px;
   background: #fff;
   box-shadow: var(--shadow);
+}
+
+.workflow-load-more {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
 }
 
 .workflow-table {

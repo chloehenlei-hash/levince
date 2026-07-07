@@ -61,6 +61,7 @@ Create a GitHub-friendly invoice workflow website that:
 - Phone corrections were applied for known imported numbers, including `104382` `0123159121`, `104384` `+66632064651`, and `104387` `01679345561`.
 - One Sarah / Corpway screenshot is still blocked because the invoice number is cropped out of the image.
 - New Invoice download auto-save now only applies to documents marked `INVOICE`. `QUOTATION` PDFs can still be downloaded, but they will not be saved into the workflow automatically.
+- Invoices page now defaults to the latest 5 invoices for the selected status, with `Load more` to show the full list and an invoice-number search next to the status filter/Refresh button.
 
 ## Important Decisions
 - Use Vite/React because the original invoice generator is React/Vite and should stay visually/functionally the same.
@@ -73,6 +74,7 @@ Create a GitHub-friendly invoice workflow website that:
 - Preserve uploaded/completed invoices in history instead of deleting them.
 - Frontend changes must include a fresh local `dist` build because GitHub Pages now publishes the committed `dist` artifact directly.
 - Quotation documents should stay outside the invoice workflow unless Chloe manually changes them into invoices.
+- Desmond's Invoices page should stay compact by default: show latest 5, search invoice number for direct lookup, then mark paid from the found row.
 
 ## Commands Already Run
 - Checked current folder contents.
@@ -135,4 +137,4 @@ Create a GitHub-friendly invoice workflow website that:
 
 ## Exact Next Steps
 1. Ask Chloe for the cropped Sarah / Corpway invoice number before importing that one.
-2. Continue testing the live site workflow: Invoice download auto-saves; Quotation download does not save; Invoices page checkmark marks paid; SQL Queue only shows paid/not uploaded documents.
+2. Continue testing the live site workflow: Invoice download auto-saves; Quotation download does not save; Invoices page latest-5/search/load-more behavior works; checkmark marks paid; SQL Queue only shows paid/not uploaded documents.
