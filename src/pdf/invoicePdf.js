@@ -610,21 +610,6 @@ export function validateInvoice(data) {
   if (
     invoiceData.serviceGroups.some((group) =>
       group.dates.some((dateGroup) =>
-        dateGroup.lines.some(
-          (line) =>
-            !isSpacerLine(line) &&
-            !isDescriptionOnlyLine(line) &&
-            !isAdjustmentLine(line) &&
-            !String(line.qty || "").trim(),
-        ),
-      ),
-    )
-  ) {
-    missing.push("Qty");
-  }
-  if (
-    invoiceData.serviceGroups.some((group) =>
-      group.dates.some((dateGroup) =>
         dateGroup.lines.some((line) => {
           if (isSpacerLine(line)) return false;
           if (isDescriptionOnlyLine(line)) return false;

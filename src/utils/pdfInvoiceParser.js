@@ -13,7 +13,7 @@ import pdfWorkerSrc from "pdfjs-dist/legacy/build/pdf.worker.js?url";
 const PDF_EXT_RE = /\.pdf$/i;
 const CURRENCY_RE = /^(RM|MYR|TWD|NTD|USD|SGD|HKD|AUD|GBP|EUR|JPY|CNY|RMB|THB|IDR|PHP|KRW)$/i;
 const DATE_RE =
-  /^(?:\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+(?:\s+\d{4})?|\d{1,2}\s*[-–—]\s*\d{1,2}\s+[A-Za-z]+(?:\s+\d{4})?)$/i;
+  /^(?:\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+(?:\s+\d{4})?|\d{1,2}(?:st|nd|rd|th)?\s*[-–—]\s*\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+(?:\s+\d{4})?)$/i;
 
 function clean(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
@@ -21,8 +21,10 @@ function clean(value) {
 
 function textAmount(value) {
   const text = clean(value);
+  if (!/\d/.test(text)) return "";
   const negative = /^\(.+\)$/.test(text) || /^-/.test(text);
   const number = text.replace(/[(),]/g, "").replace(/[^\d.-]/g, "");
+  if (!/\d/.test(number)) return "";
   const parsed = Number(number);
   if (!Number.isFinite(parsed)) return "";
   return String(negative && parsed > 0 ? -parsed : parsed);
@@ -124,7 +126,7 @@ function parseTable(rows) {
 
     if (!description || /^description$/i.test(description) || /^(subtotal|total)$/i.test(description)) return;
     if (amount) {
-      getDate(currentDate || "Service").lines.push(createServiceLine({ description, qty: qty || "1", amount }));
+      getDate(currentDate || "Service").lines.push(createServiceLine({ description, qty, amount }));
       return;
     }
     if (DATE_RE.test(description)) {
@@ -141,7 +143,7 @@ function parseTable(rows) {
       getDate(currentDate);
       return;
     }
-    getDate(currentDate || "Service").lines.push(createServiceLine({ description, isRemark: true, isNote: true }));
+    getDate(currentDate || "Service").lines.push(createServiceLine({ description }));
   });
 
   return {
