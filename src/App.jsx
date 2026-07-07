@@ -9,6 +9,30 @@ const NAV_ITEMS = [
   { key: "sql", label: "SQL Queue", icon: Database },
 ];
 
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+function padMonth(value) {
+  return String(value).padStart(2, "0");
+}
+
+function currentMonthKey() {
+  const today = new Date();
+  return `${today.getFullYear()}-${padMonth(today.getMonth() + 1)}`;
+}
+
 function money(value, currency = "RM") {
   const amount = Number(String(value || "0").replace(/,/g, ""));
   return `${currency || "RM"} ${Number.isFinite(amount) ? amount.toLocaleString("en-MY", {
@@ -33,6 +57,27 @@ function displayDate(value) {
   const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (match) return `${match[3]}/${match[2]}/${match[1]}`;
   return text.slice(0, 12);
+}
+
+function invoiceMonthKey(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const iso = text.match(/^(\d{4})-(\d{2})-\d{2}/);
+  if (iso) return `${iso[1]}-${iso[2]}`;
+  const monthName = MONTH_NAMES.join("|");
+  const dmy = text.match(new RegExp(`\\b\\d{1,2}(?:st|nd|rd|th)?\\s+(${monthName})\\s+(\\d{4})\\b`, "i"));
+  if (dmy) return `${dmy[2]}-${padMonth(MONTH_NAMES.findIndex((month) => month.toLowerCase() === dmy[1].toLowerCase()) + 1)}`;
+  const mdy = text.match(new RegExp(`\\b(${monthName})\\s+\\d{1,2},?\\s+(\\d{4})\\b`, "i"));
+  if (mdy) return `${mdy[2]}-${padMonth(MONTH_NAMES.findIndex((month) => month.toLowerCase() === mdy[1].toLowerCase()) + 1)}`;
+  return "";
+}
+
+function monthLabel(key) {
+  if (key === "all") return "All Months";
+  const [year, month] = String(key || "").split("-");
+  const index = Number(month) - 1;
+  if (!year || index < 0 || index > 11) return "Unknown Month";
+  return `${MONTH_NAMES[index]} ${year}`;
 }
 
 function getWorkflowCustomerName(invoice) {
@@ -146,6 +191,7 @@ export default function App() {
   const [customerUploadDone, setCustomerUploadDone] = useState(false);
   const [invoiceUploadDone, setInvoiceUploadDone] = useState(false);
   const [filter, setFilter] = useState("active");
+  const [monthFilter, setMonthFilter] = useState(currentMonthKey());
   const [invoiceSearch, setInvoiceSearch] = useState("");
   const [showAllInvoices, setShowAllInvoices] = useState(false);
   const [recentPaidUndo, setRecentPaidUndo] = useState(null);
@@ -156,6 +202,22 @@ export default function App() {
   const paidQueue = useMemo(
     () => invoices.filter((invoice) => invoice.Status === "Paid" && invoice["SQL Status"] !== "Uploaded to SQL"),
     [invoices],
+  );
+  const monthOptions = useMemo(() => {
+    const keys = new Set([currentMonthKey()]);
+    invoices.forEach((invoice) => {
+      const key = invoiceMonthKey(invoice["Invoice Date"]);
+      if (key) keys.add(key);
+    });
+    return [...keys].sort().reverse();
+  }, [invoices]);
+  const invoicesInSelectedMonth = useMemo(() => {
+    if (monthFilter === "all") return invoices;
+    return invoices.filter((invoice) => invoiceMonthKey(invoice["Invoice Date"]) === monthFilter);
+  }, [invoices, monthFilter]);
+  const invoicePagePaidQueue = useMemo(
+    () => invoicesInSelectedMonth.filter((invoice) => invoice.Status === "Paid" && invoice["SQL Status"] !== "Uploaded to SQL"),
+    [invoicesInSelectedMonth],
   );
   const customerStepPending = customerQueue.length > 0 && !customerUploadDone;
   const sqlWarnings = useMemo(() => {
@@ -352,7 +414,9 @@ export default function App() {
   }
 
   const recentPaidNo = String(recentPaidUndo?.invoiceNo || "");
-  const filteredInvoices = invoices.filter((invoice) => {
+  const invoiceSearchText = invoiceSearch.trim().toLowerCase();
+  const invoicePageSource = invoiceSearchText ? invoices : invoicesInSelectedMonth;
+  const filteredInvoices = invoicePageSource.filter((invoice) => {
     const invoiceNo = String(invoice["Internal Invoice No"] || "");
     const isRecentPaid = recentPaidNo && invoiceNo === recentPaidNo && invoice.Status === "Paid";
     if (filter === "all") return true;
@@ -360,10 +424,9 @@ export default function App() {
     if (filter === "uploaded") return invoice["SQL Status"] === "Uploaded to SQL";
     return isRecentPaid || (invoice.Status !== "Paid" && invoice.Status !== "Uploaded to SQL" && invoice.Status !== "Cancelled");
   }).filter((invoice) => {
-    const search = invoiceSearch.trim().toLowerCase();
-    if (!search) return true;
-    return String(invoice["Internal Invoice No"] || "").toLowerCase().includes(search)
-      || String(invoice["Customer Name"] || "").toLowerCase().includes(search);
+    if (!invoiceSearchText) return true;
+    return String(invoice["Internal Invoice No"] || "").toLowerCase().includes(invoiceSearchText)
+      || String(invoice["Customer Name"] || "").toLowerCase().includes(invoiceSearchText);
   }).sort(sortInvoicesByLatest);
   const limitInvoices = !invoiceSearch.trim() && !showAllInvoices;
   const visibleInvoices = limitInvoices ? filteredInvoices.slice(0, 5) : filteredInvoices;
@@ -408,6 +471,15 @@ export default function App() {
               <h1>Invoices</h1>
             </div>
             <div className="workflow-row-actions">
+              <select value={monthFilter} onChange={(event) => {
+                setMonthFilter(event.target.value);
+                setShowAllInvoices(false);
+              }}>
+                <option value="all">All Months</option>
+                {monthOptions.map((key) => (
+                  <option key={key} value={key}>{monthLabel(key)}</option>
+                ))}
+              </select>
               <select value={filter} onChange={(event) => {
                 setFilter(event.target.value);
                 setShowAllInvoices(false);
@@ -430,9 +502,9 @@ export default function App() {
             </div>
           </header>
           <div className="workflow-stats">
-            <div><span>Active</span><strong>{invoices.filter((row) => row.Status !== "Paid" && row.Status !== "Uploaded to SQL" && row.Status !== "Cancelled").length}</strong></div>
-            <div><span>Paid Queue</span><strong>{paidQueue.length}</strong></div>
-            <div><span>Paid Value</span><strong>{money(paidQueue.reduce((sum, row) => sum + parseAmount(row.Total), 0))}</strong></div>
+            <div><span>Active</span><strong>{invoicesInSelectedMonth.filter((row) => row.Status !== "Paid" && row.Status !== "Uploaded to SQL" && row.Status !== "Cancelled").length}</strong></div>
+            <div><span>Paid Queue</span><strong>{invoicePagePaidQueue.length}</strong></div>
+            <div><span>Paid Value</span><strong>{money(invoicePagePaidQueue.reduce((sum, row) => sum + parseAmount(row.Total), 0))}</strong></div>
           </div>
           <div className="workflow-table-wrap">
             <table className="workflow-table">
