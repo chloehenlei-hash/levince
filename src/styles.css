@@ -2,20 +2,26 @@
   color-scheme: light;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #f5f5f2;
+  background: #fff8f5;
   color: #1d1d1f;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  --paper: #ffffff;
+  --paper: #fffdfb;
   --ink: #1d1d1f;
   --muted: #666a70;
-  --line: #deded8;
-  --soft-line: #ecece7;
-  --brand: #a7191d;
-  --brand-dark: #841014;
-  --field: #fbfbf8;
-  --shadow: 0 18px 50px rgba(37, 33, 27, 0.09);
+  --line: #e6d9d3;
+  --soft-line: #f0e8e2;
+  --brand: #b51d2a;
+  --brand-dark: #8f1320;
+  --brand-soft: #fff0f1;
+  --field: #fffaf6;
+  --mint: #e9f8ef;
+  --sun: #fff6d9;
+  --sky: #eef7ff;
+  --shadow: 0 18px 44px rgba(87, 54, 44, 0.1);
+  --button-lift: 0 4px 0 rgba(101, 54, 42, 0.22), 0 12px 22px rgba(87, 54, 44, 0.12);
+  --button-press: 0 1px 0 rgba(101, 54, 42, 0.18), 0 5px 12px rgba(87, 54, 44, 0.12);
 }
 
 * {
@@ -25,6 +31,9 @@
 body {
   margin: 0;
   min-width: 320px;
+  min-height: 100vh;
+  background:
+    linear-gradient(180deg, #fff8f5 0%, #fffdf8 42%, #f3fbf8 100%);
 }
 
 button,
@@ -113,8 +122,8 @@ h2 {
   padding: 14px;
   border: 1px solid rgba(167, 25, 29, 0.24);
   border-radius: 7px;
-  background: #fff;
-  box-shadow: 0 12px 32px rgba(37, 33, 27, 0.08);
+  background: linear-gradient(180deg, #fffdfb 0%, #fff7f2 100%);
+  box-shadow: 0 12px 28px rgba(87, 54, 44, 0.1);
 }
 
 .duplicate-warning {
@@ -137,6 +146,7 @@ h2 {
   background: var(--paper);
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
+  border-radius: 8px;
 }
 
 .editor {
@@ -258,13 +268,13 @@ input:focus,
 select:focus {
   border-color: rgba(167, 25, 29, 0.72);
   background: #fff;
-  box-shadow: 0 0 0 3px rgba(167, 25, 29, 0.11);
+  box-shadow: 0 0 0 3px rgba(181, 29, 42, 0.12);
 }
 
 textarea:focus {
   border-color: rgba(167, 25, 29, 0.72);
   background: #fff;
-  box-shadow: 0 0 0 3px rgba(167, 25, 29, 0.11);
+  box-shadow: 0 0 0 3px rgba(181, 29, 42, 0.12);
 }
 
 .paste-field {
@@ -288,7 +298,7 @@ textarea:focus {
   padding: 16px;
   border: 1.5px dashed rgba(167, 25, 29, 0.42);
   border-radius: 8px;
-  background: #fff8f6;
+  background: #fff4f0;
   cursor: pointer;
   transition:
     border-color 140ms ease,
@@ -300,8 +310,8 @@ textarea:focus {
 .pdf-paste-zone:focus,
 .pdf-paste-zone.is-drag-over {
   border-color: var(--brand);
-  background: #fff;
-  box-shadow: 0 0 0 3px rgba(167, 25, 29, 0.1);
+  background: #fffdfb;
+  box-shadow: 0 0 0 3px rgba(181, 29, 42, 0.1);
   outline: none;
 }
 
@@ -394,7 +404,7 @@ textarea:focus {
   padding: 14px;
   border: 1px solid var(--soft-line);
   border-radius: 7px;
-  background: #fff;
+  background: linear-gradient(180deg, #fffdfb 0%, #fffaf6 100%);
 }
 
 .service-group-header,
@@ -416,7 +426,7 @@ textarea:focus {
   padding: 12px;
   border: 1px solid var(--soft-line);
   border-radius: 7px;
-  background: var(--field);
+  background: #fff7f1;
 }
 
 .line-head,
@@ -496,11 +506,22 @@ textarea:focus {
   border-radius: 7px;
   cursor: pointer;
   text-decoration: none;
+  box-shadow: var(--button-lift);
   transition:
     transform 140ms ease,
+    box-shadow 140ms ease,
     background-color 140ms ease,
     border-color 140ms ease,
     color 140ms ease;
+}
+
+.primary-button:not(:disabled):active,
+.download-button:not(:disabled):active,
+.secondary-button:not(:disabled):active,
+.ghost-button:not(:disabled):active,
+.icon-button:not(:disabled):active {
+  transform: translateY(3px);
+  box-shadow: var(--button-press);
 }
 
 .primary-button svg,
@@ -534,7 +555,7 @@ textarea:focus {
 .download-button {
   min-height: 46px;
   padding: 0 16px;
-  background: #202020;
+  background: #262222;
   color: #fff;
   font-weight: 750;
 }
@@ -543,7 +564,7 @@ textarea:focus {
 .ghost-button {
   min-height: 40px;
   padding: 0 13px;
-  background: #f6f6f2;
+  background: #fffaf3;
   border: 1px solid var(--line);
   color: var(--ink);
   font-weight: 720;
@@ -561,13 +582,13 @@ textarea:focus {
 }
 
 .ghost-button {
-  background: rgba(255, 255, 255, 0.66);
+  background: rgba(255, 253, 251, 0.86);
 }
 
 .secondary-button:hover,
 .ghost-button:hover,
 .icon-button:hover {
-  border-color: #c9c9c2;
+  border-color: #d4c3ba;
   background: #fff;
 }
 
@@ -575,7 +596,7 @@ textarea:focus {
   width: 38px;
   height: 38px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: #fffdfb;
   color: #4a4a4d;
 }
 
@@ -598,15 +619,15 @@ textarea:focus {
 }
 
 .error-message {
-  background: #fff1f1;
+  background: #fff0f1;
   color: #861519;
   border: 1px solid #f3c7c7;
 }
 
 .hint {
-  background: #f7f4ec;
-  border: 1px solid #e8dfca;
-  color: #61533a;
+  background: #fff8e3;
+  border: 1px solid #eadba8;
+  color: #61512c;
 }
 
 .preview-header {
@@ -627,7 +648,7 @@ textarea:focus {
   min-height: 650px;
   overflow: hidden;
   border: 1px solid var(--line);
-  background: #e8e8e2;
+  background: #f1eee8;
 }
 
 .pdf-frame iframe {
@@ -878,8 +899,8 @@ textarea:focus {
 }
 
 .workflow-nav .ghost-button.active {
-  border-color: rgba(167, 25, 29, 0.38);
-  background: rgba(167, 25, 29, 0.08);
+  border-color: rgba(181, 29, 42, 0.34);
+  background: var(--brand-soft);
   color: var(--brand);
 }
 
@@ -889,8 +910,8 @@ textarea:focus {
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #fff;
-  box-shadow: 0 12px 32px rgba(37, 33, 27, 0.07);
+  background: linear-gradient(180deg, #fffdfb 0%, #fff8f3 100%);
+  box-shadow: 0 12px 30px rgba(87, 54, 44, 0.09);
 }
 
 .workflow-message,
@@ -949,7 +970,7 @@ textarea:focus {
   margin-left: 8px;
   border-radius: 999px;
   padding: 0 9px;
-  background: #f1f1ed;
+  background: #f6f0eb;
   color: #55585d;
   font-size: 0.72rem;
   font-weight: 780;
@@ -957,12 +978,12 @@ textarea:focus {
 }
 
 .step-state.is-ready {
-  background: #fff5df;
+  background: var(--sun);
   color: #9a6500;
 }
 
 .step-state.is-done {
-  background: #e8f6ee;
+  background: var(--mint);
   color: #237a4b;
 }
 
@@ -986,8 +1007,8 @@ textarea:focus {
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #fff;
-  box-shadow: 0 10px 24px rgba(37, 33, 27, 0.05);
+  background: linear-gradient(180deg, #fffdfb 0%, #fffaf4 100%);
+  box-shadow: 0 10px 22px rgba(87, 54, 44, 0.07);
 }
 
 .workflow-stats span {
@@ -1009,7 +1030,7 @@ textarea:focus {
   margin: 0 0 18px;
   border: 1px solid #edd7a7;
   border-radius: 7px;
-  background: #fffaf0;
+  background: #fff8e3;
   padding: 12px 14px;
 }
 
@@ -1024,7 +1045,7 @@ textarea:focus {
   overflow-x: auto;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #fff;
+  background: #fffdfb;
   box-shadow: var(--shadow);
 }
 
@@ -1049,13 +1070,18 @@ textarea:focus {
 }
 
 .workflow-table th {
+  background: #fff7f1;
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 780;
 }
 
+.workflow-table tbody tr:not(.workflow-row-paid):hover td {
+  background: #fffaf3;
+}
+
 .workflow-row-paid td {
-  background: #f7fff9;
+  background: #f1fff6;
 }
 
 .workflow-row-paid td:first-child {
@@ -1068,28 +1094,28 @@ textarea:focus {
   align-items: center;
   border-radius: 999px;
   padding: 0 9px;
-  background: #f1f1ed;
+  background: #f6f0eb;
   color: #55585d;
   font-size: 0.78rem;
   font-weight: 780;
 }
 
 .workflow-status.paid {
-  background: #e8f6ee;
+  background: var(--mint);
   color: #237a4b;
 }
 
 .paid-check-button.is-paid,
 .paid-check-button.is-paid:disabled {
   border-color: #b7e2c9;
-  background: #e8f6ee;
+  background: var(--mint);
   color: #237a4b;
   opacity: 1;
 }
 
 .not-paid-button {
   border-color: #efd0d0;
-  background: #fff7f7;
+  background: #fff1f1;
   color: var(--brand);
 }
 
@@ -1102,21 +1128,21 @@ textarea:focus {
   border-color: #97d9b7;
   background: #dff5e9;
   color: #176a43;
-  box-shadow: 0 8px 18px rgba(35, 122, 75, 0.12);
+  box-shadow: 0 4px 0 rgba(35, 122, 75, 0.18), 0 8px 18px rgba(35, 122, 75, 0.12);
 }
 
 .workflow-status.sent {
-  background: #edf3ff;
+  background: var(--sky);
   color: #215db8;
 }
 
 .workflow-status.uploaded-to-sql {
-  background: #f1eafd;
-  color: #5a38a5;
+  background: #f3eefc;
+  color: #5b3c9d;
 }
 
 .workflow-status.not-uploaded {
-  background: #fff5df;
+  background: var(--sun);
   color: #9a6500;
 }
 

@@ -65,6 +65,7 @@ Create a GitHub-friendly invoice workflow website that:
 - Workflow UX polish added: Paid actions now show a short-lived `Undo Paid`; Invoices table shows `Paid At`; search supports invoice number or customer name; New Invoice warns when the current document number already exists; SQL Queue shows clearer Step 1/Step 2 readiness, copy buttons turn green after copying, and SQL warnings highlight pending customers, missing phones, foreign currency, or negative rows.
 - Invoices page Pay feedback was made explicit: clicking `Mark Paid` now immediately turns the row green before Google Sheet finishes syncing, keeps that invoice briefly visible in Active, and paid rows now have a `Not Paid` button to move them back to unpaid.
 - Invoices page now has a month selector, defaulting to the current month. Month filtering affects the Invoices page list and stats only; SQL Queue continues to use all paid/not-uploaded invoices.
+- Current UI polish completed: the website now uses a softer warm/mint visual style and tactile pressed-button feedback without changing invoice, payment, SQL, or Google Sheet workflow logic.
 
 ## Important Decisions
 - Use Vite/React because the original invoice generator is React/Vite and should stay visually/functionally the same.
@@ -140,6 +141,7 @@ Create a GitHub-friendly invoice workflow website that:
 - Updated workflow saving so blank Qty values stay blank instead of being saved as 1 for future PDF imports.
 - Ran Vite production build successfully after improving Pay / Not Paid feedback.
 - Ran Vite production build successfully after adding the Invoices month selector.
+- Ran Vite production build successfully after the CSS-only UI polish. New committed build assets are `dist/assets/index-ChE-lwu4.js`, `dist/assets/index-Dppyg_px.css`, and `dist/assets/pdf-BP0nbkRs.js`.
 
 ## Exact Next Steps
 1. Ask Chloe for the cropped Sarah / Corpway invoice number before importing that one.
