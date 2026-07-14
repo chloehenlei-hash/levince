@@ -221,13 +221,15 @@ function createPlainDescriptionLine(description) {
   });
 }
 
-function createAdjustmentLine(description, amount) {
-  return createServiceLine({
+function createAdjustmentLine(description, amount, adjustmentKind = "") {
+  const line = createServiceLine({
     description,
     qty: "",
     amount: formatAmount(amount),
     isAdjustment: true,
   });
+  line.adjustmentKind = adjustmentKind;
+  return line;
 }
 
 function createSpacerLine() {
@@ -447,7 +449,9 @@ function getParsedSubtotal(dateGroups) {
       total +
       dateGroup.lines.reduce((lineTotal, line) => {
         const amount = Number(String(line.amount || "0").replace(/,/g, ""));
-        if (!Number.isFinite(amount) || amount <= 0) return lineTotal;
+        if (!Number.isFinite(amount)) return lineTotal;
+        if (line.adjustmentKind === "discount") return lineTotal + amount;
+        if (line.isAdjustment || amount <= 0) return lineTotal;
         return lineTotal + amount;
       }, 0),
     0,
@@ -771,6 +775,7 @@ export function parsePastedInvoiceDetails(rawText, currentInvoice) {
   let detectedCurrency = "";
   let isInRemarkSection = false;
   let currentServiceContext = "";
+  const pendingPercentageCharges = [];
 
   serviceInputLines.forEach((line, index) => {
     if (!line) {
@@ -821,14 +826,14 @@ export function parsePastedInvoiceDetails(rawText, currentInvoice) {
         dateGroups.push(currentDateGroup);
       }
 
-      const chargeBase = getParsedSubtotal(dateGroups);
       const serviceLine = createServiceLine({
         description: percentageCharge.description,
         qty: percentageCharge.qty,
-        amount: formatAmount(chargeBase * (percentageCharge.percentage / 100)),
+        amount: "",
         isAdjustment: true,
       });
       currentDateGroup.lines.push(serviceLine);
+      pendingPercentageCharges.push({ line: serviceLine, percentage: percentageCharge.percentage });
       pendingLine = null;
       lastCompletedLine = serviceLine;
       currentServiceContext = "";
@@ -842,7 +847,9 @@ export function parsePastedInvoiceDetails(rawText, currentInvoice) {
         dateGroups.push(currentDateGroup);
       }
 
-      currentDateGroup.lines.push(createAdjustmentLine(discountAdjustment.description, discountAdjustment.amount));
+      currentDateGroup.lines.push(
+        createAdjustmentLine(discountAdjustment.description, discountAdjustment.amount, "discount"),
+      );
       if (discountAdjustment.currency) detectedCurrency = discountAdjustment.currency;
       pendingLine = null;
       lastCompletedLine = null;
@@ -858,7 +865,7 @@ export function parsePastedInvoiceDetails(rawText, currentInvoice) {
 
       const adjustment = parseDepositAdjustmentLine(line);
       if (adjustment) {
-        currentDateGroup.lines.push(createAdjustmentLine(adjustment.description, adjustment.amount));
+        currentDateGroup.lines.push(createAdjustmentLine(adjustment.description, adjustment.amount, "deposit"));
         if (adjustment.currency) detectedCurrency = adjustment.currency;
       }
       pendingLine = null;
@@ -1051,6 +1058,11 @@ export function parsePastedInvoiceDetails(rawText, currentInvoice) {
     if (parsedLine.currency) detectedCurrency = parsedLine.currency;
     pendingLine = serviceLine.amount ? null : serviceLine;
     lastCompletedLine = serviceLine.amount ? serviceLine : null;
+  });
+
+  const percentageChargeBase = getParsedSubtotal(dateGroups);
+  pendingPercentageCharges.forEach(({ line, percentage }) => {
+    line.amount = formatAmount(percentageChargeBase * (percentage / 100));
   });
 
   const populatedDates = dateGroups
