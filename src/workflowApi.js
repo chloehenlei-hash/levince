@@ -1,6 +1,6 @@
 const BACKEND_URL = "https://script.google.com/macros/s/AKfycbx_GUEtP6MUKq_jVcD_anhO946CE0hH0TgCoeMkCNmUvQT7h6og98OLZyWSTt6qo-kH/exec";
 const SYSTEM_USER = "Levince";
-const REQUEST_TIMEOUT_MS = 30000;
+const REQUEST_TIMEOUT_MS = 60000;
 
 export function isWorkflowReady() {
   return BACKEND_URL.startsWith("https://script.google.com/");

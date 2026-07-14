@@ -6,6 +6,7 @@ import {
   Plus,
   RefreshCcw,
   RotateCcw,
+  Sparkles,
   Trash2,
   UploadCloud,
 } from "lucide-react";
@@ -28,6 +29,7 @@ import {
 } from "./pdf/invoicePdf";
 import { parsePastedInvoiceDetails as parseInvoiceTextDetails } from "./utils/invoiceTextParser";
 import { getPdfFileFromPaste, parsePastedPdfInvoice } from "./utils/pdfInvoiceParser";
+import { callWorkflowApi } from "./workflowApi.js";
 
 const STORAGE_KEY = "levince-invoice-draft";
 
@@ -409,15 +411,37 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "", exist
     clearGeneratedOutput();
   }
 
-  function applyQuickPaste() {
-    if (!quickPasteText.trim()) {
+  async function applyQuickPasteText(value) {
+    const text = String(value || "").trim();
+    if (!text) {
       setQuickPasteStatus("Paste invoice details first.");
       return;
     }
 
-    setInvoice((current) => parseInvoiceTextDetails(quickPasteText, current));
+    setQuickPasteStatus("Organising details...");
+    try {
+      const result = await callWorkflowApi("parseInvoiceWithGemini", { text });
+      const organisedText = String(result.normalizedText || "").trim();
+      if (!organisedText) throw new Error("No organised text returned.");
+      setInvoice((current) => parseInvoiceTextDetails(organisedText, current));
+      setQuickPasteStatus("Smart details applied. Please check the amounts before generating.");
+    } catch {
+      setInvoice((current) => parseInvoiceTextDetails(text, current));
+      setQuickPasteStatus("Details applied. Please review before generating.");
+    }
     setError("");
-    setQuickPasteStatus("Details applied. Review the fields, then generate the PDF.");
+  }
+
+  function applyQuickPaste() {
+    applyQuickPasteText(quickPasteText);
+  }
+
+  function handleQuickPaste(event) {
+    const text = event.clipboardData?.getData("text/plain") || "";
+    if (!text.trim()) return;
+    event.preventDefault();
+    setQuickPasteText(text);
+    applyQuickPasteText(text);
   }
 
   return (
@@ -529,16 +553,17 @@ Alphard
 Remark
 For airport arrival, 90 minutes waiting time is included.`}
                 onChange={(event) => setQuickPasteText(event.target.value)}
+                onPaste={handleQuickPaste}
               />
             </label>
             <p className="mini-instruction">
               Remarks: start remark lines with <code>**</code>, or add a <code>Remark</code> heading and put the
-              remark text below it. Remarks stay in the Description column with Qty and Amount blank.
+                remark text below it. Remarks stay in the Description column with Qty and Amount blank.
             </p>
             <div className="paste-actions">
               <button type="button" className="secondary-button" onClick={applyQuickPaste}>
-                <FileText aria-hidden="true" />
-                Apply details
+                <Sparkles aria-hidden="true" />
+                Smart Apply
               </button>
               {quickPasteStatus ? <span>{quickPasteStatus}</span> : null}
             </div>

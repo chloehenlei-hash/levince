@@ -126,7 +126,14 @@ function invoiceToWorkflowPayload({ invoice, filename }) {
   const total = totalOverride > 0 ? totalOverride : subtotal;
   const customerName = getWorkflowCustomerName(invoice);
   const emailLabel = String(invoice.headerLabels?.email || "").toLowerCase();
+  const phoneLabel = String(invoice.headerLabels?.phone || "").toLowerCase();
   const emailValue = textValue(invoice.email);
+  const phoneValue = textValue(invoice.phone);
+  const labelledValues = [
+    { label: emailLabel, value: emailValue },
+    { label: phoneLabel, value: phoneValue },
+  ];
+  const valueFor = (pattern) => labelledValues.find((entry) => pattern.test(entry.label))?.value || "";
 
   return {
     invoice: {
@@ -136,10 +143,10 @@ function invoiceToWorkflowPayload({ invoice, filename }) {
       dueDate: "",
       customerName,
       sqlCustomerCode: "",
-      customerEmail: emailLabel.includes("email") ? emailValue : "",
-      customerPhone: textValue(invoice.phone),
-      billingAddress: emailLabel.includes("address") ? emailValue : "",
-      tin: "",
+      customerEmail: valueFor(/email/),
+      customerPhone: valueFor(/phone|mobile|tel|contact/),
+      billingAddress: valueFor(/address/),
+      tin: valueFor(/tax|tin|trn|vat/),
       idType: "",
       idNo: "",
       terms: "",

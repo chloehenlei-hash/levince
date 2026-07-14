@@ -571,6 +571,7 @@ export function parsePastedInvoiceDetails(rawText, currentInvoice) {
   const fallbackCustomerFields = {
     licenseNumber: "",
     address: "",
+    taxNumber: "",
   };
   let explicitServiceHeading = "";
   let isCollectingAddress = false;
@@ -658,6 +659,7 @@ export function parsePastedInvoiceDetails(rawText, currentInvoice) {
         String(nextInvoice.phone || "").trim() ||
         fallbackCustomerFields.licenseNumber ||
         fallbackCustomerFields.address ||
+        fallbackCustomerFields.taxNumber ||
         Object.values(providedCustomerFields).some(Boolean),
     );
   }
@@ -738,6 +740,8 @@ export function parsePastedInvoiceDetails(rawText, currentInvoice) {
       } else if (/^(address|company address|billing address)$/.test(label)) {
         appendAddressLine(value);
         if (!value) isCollectingAddress = true;
+      } else if (/^(tax|tax no|tax number|tax id|tin|trn|vat|vat no|vat number)$/.test(label)) {
+        fallbackCustomerFields.taxNumber = value;
       }
       else if (/^(vehicle|car)$/.test(label) && value) unlabelledLines.push(`Vehicle: ${value}`);
       else unlabelledLines.push(line);
@@ -753,11 +757,24 @@ export function parsePastedInvoiceDetails(rawText, currentInvoice) {
     setHeaderLabel("customerName", "LICENSE NUMBER");
     nextInvoice.customerName = fallbackCustomerFields.licenseNumber;
   }
-  if (!String(nextInvoice.email || "").trim() && fallbackCustomerFields.address) {
-    setHeaderLabel("email", "ADDRESS");
-    nextInvoice.email = fallbackCustomerFields.address;
+  const email = String(nextInvoice.email || "").trim();
+  const phone = String(nextInvoice.phone || "").trim();
+  const spareContacts = [
+    { label: "ADDRESS", value: fallbackCustomerFields.address },
+    { label: "TAX NUMBER", value: fallbackCustomerFields.taxNumber },
+  ].filter((entry) => String(entry.value || "").trim());
+
+  if (!email && spareContacts.length) {
+    const contact = spareContacts.shift();
+    setHeaderLabel("email", contact.label);
+    nextInvoice.email = contact.value;
   }
-  if (!String(nextInvoice.phone || "").trim() && (fallbackCustomerFields.licenseNumber || fallbackCustomerFields.address)) {
+  if (!phone && spareContacts.length) {
+    const contact = spareContacts.shift();
+    setHeaderLabel("phone", contact.label);
+    nextInvoice.phone = contact.value;
+  }
+  if (!String(nextInvoice.phone || "").trim() && (fallbackCustomerFields.licenseNumber || nextInvoice.email)) {
     setHeaderLabel("phone", DEFAULT_HEADER_LABELS.phone);
     nextInvoice.phone = "-";
   }
