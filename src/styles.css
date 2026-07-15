@@ -687,7 +687,8 @@ textarea:focus {
   opacity: 0.55;
 }
 
-.secondary-button.is-copied {
+.secondary-button.is-copied,
+.primary-button.is-copied {
   border-color: #97d9b7;
   background: #dff5e9;
   color: #176a43;
@@ -1182,6 +1183,41 @@ textarea:focus {
   font-weight: 680;
 }
 
+.sql-sync-card {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 18px;
+  border: 1px solid #b7e2c9;
+  border-radius: 7px;
+  background: #f1fff6;
+  padding: 12px 14px;
+  color: #176a43;
+}
+
+.sql-sync-card.is-error {
+  border-color: #f0b7b7;
+  background: #fff1f1;
+  color: var(--brand);
+}
+
+.sql-sync-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.sql-sync-card strong {
+  display: block;
+  margin-top: 3px;
+}
+
+.sql-sync-card p {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 680;
+}
+
 .workflow-table-wrap {
   overflow-x: auto;
   border: 1px solid var(--line);
@@ -1285,6 +1321,11 @@ textarea:focus {
 .workflow-status.not-uploaded {
   background: var(--sun);
   color: #9a6500;
+}
+
+.workflow-status.ready-for-sql {
+  background: #dff5e9;
+  color: #176a43;
 }
 
 .workflow-empty {

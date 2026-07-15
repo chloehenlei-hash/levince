@@ -1,5 +1,35 @@
 # Worklog
 
+## Services UX and Explicit Paste Modes - 2026-07-15
+
+- Split Quick Paste into two explicit actions: `Normal Organise` uses only the local parser; `AI Organise` calls Gemini only when Chloe chooses it. Pasting text no longer automatically organises or calls AI.
+- Made service date optional in both the editor and PDF validation.
+- Added explicit service row types: charge, note, and blank line. Notes hide Qty/Amount; blank lines render as dedicated spacer controls.
+- Updated the local parser so separate non-empty source lines remain separate invoice rows instead of being merged with the preceding description.
+- Moved Description width into `More options` and tightened mobile service controls, including top-right delete buttons and stacked charge fields.
+- Verified a no-date paste with a charge, blank line, and two separate notes; validation passed and all rows stayed separate.
+- Production build passed. Current assets include `dist/assets/index-B4cTp8Zt.js` and `dist/assets/index-YyVEOx4W.css`.
+
+## SQL Scheduled Upload Confirmation - 2026-07-15
+
+- Added a safer SQL upload gate: paid invoices now need Chloe to press `Confirm Scheduled Upload` before the API scheduler is allowed to upload them.
+- Added backend action `confirmSqlUpload`, which changes selected paid invoices from `Not Uploaded` to `Ready for SQL` and clears old SQL API errors.
+- Changed `sqlSyncPaidInvoices` so scheduled API runs only process invoices with `SQL Status = Ready for SQL`; ordinary paid invoices remain visible but are not auto-uploaded.
+- Scheduler now stores the last SQL API run result in Script Properties as `SQL_SYNC_LAST_RESULT`, including run time, uploaded invoices, and failures.
+- SQL Queue now shows a last-run card, invoice SQL status, and SQL API error messages so Chloe can tell whether the scheduled upload happened.
+- Removed `dist/` from `.gitignore` because GitHub Pages currently publishes the committed `dist` output and new build assets must be visible to `git add`.
+- Production build passed and Apps Script syntax checks passed. Current build assets include `dist/assets/index-gwch3tOz.js`, `dist/assets/index-Cr7aF_zZ.css`, and `dist/assets/pdf-D7tHI2u8.js`.
+
+## Gemini Smart Paste Connected - 2026-07-15
+
+- Added `Gemini.gs` to the live Google Apps Script project.
+- Stored the Gemini API key in Script Properties as `GEMINI_API_KEY`; the key is not exposed in GitHub Pages.
+- Added `parseInvoiceWithGemini` to the live `Code.gs` action map and updated the existing Web App deployment.
+- Verified `gemini-3.5-flash` from the Apps Script editor and the live website.
+- Live test correctly extracted company, customer, email, international phone, invoice date, service date, description, quantity, currency, and amount.
+- Tightened the prompt so service dates such as `20 July` are emitted separately from the chargeable description row.
+- Test data was not downloaded or saved as an invoice.
+
 ## Current Goal
 Build a lightweight invoice workflow website for Chloe and Desmond.
 
@@ -66,6 +96,15 @@ Create a GitHub-friendly invoice workflow website that:
 - Invoices page Pay feedback was made explicit: clicking `Mark Paid` now immediately turns the row green before Google Sheet finishes syncing, keeps that invoice briefly visible in Active, and paid rows now have a `Not Paid` button to move them back to unpaid.
 - Invoices page now has a month selector, defaulting to the current month. Month filtering affects the Invoices page list and stats only; SQL Queue continues to use all paid/not-uploaded invoices.
 - Current UI polish completed: the website now uses a softer warm/mint visual style and tactile pressed-button feedback without changing invoice, payment, SQL, or Google Sheet workflow logic.
+- SQL Account API integration direction confirmed: the existing website + Google Sheet + Apps Script backend will be treated as LeVince's lightweight internal ERP. The Apps Script Web App is LeVince's own endpoint/middleware; it will securely call SQL Account's REST API after SQL API Service access is provided.
+- Downloaded and inspected SQL Account's official Postman collection dated 2026-05-28. It confirms `https://api.sql.my`, AWSv4 defaults `ap-southeast-5` / `sqlaccount`, `POST /customer`, and `POST /salesinvoice` payload structures.
+- Added `apps-script/SqlApi.gs` as a separate 149-line connector. It reads API credentials from Script Properties, signs AWSv4 requests, checks/creates customers, creates paid MYR Sales Invoices, skips non-money rows, prevents duplicates through `docref1`, and writes SQL DocNo/DocKey/errors back to the invoice sheet.
+- Direct SQL upload is intentionally not exposed in the public website yet. The controlled first test must be run from the Apps Script editor after API Service and keys are ready.
+- SQL API `/version` reached the hosted service but returned `401 Invalid signature`. The generated SQL curl confirms the hosted credential scope is `ap-southeast-5/sqlaccount` and signs only `host;x-amz-date`; `SqlApi.gs` was updated to match that signed-header set and compact Authorization formatting.
+- After replacing both hosted API credentials with a matching newly generated pair, authentication succeeded. `sqlConnectionStatus` now reaches SQL Account and returns a database-license error instead: maximum 1 concurrent connection while 2 users are logged on. The remaining blocker is concurrent SQL sessions, not API signing.
+- Added `apps-script/Scheduler.gs` for unattended SQL synchronization. It installs Malaysia-time triggers around 10:30/22:30 daily, with 11:00/23:00 fallback runs; repeated installation replaces old SQL sync triggers and existing uploaded-status checks prevent duplicate invoice uploads.
+- Quick Paste percentage charges now use the chargeable subtotal after invoice discounts. Deposits and previous percentage adjustments are excluded from the 4% calculation base.
+- Smart Paste scaffolding now calls Gemini through Apps Script, keeps the API key in Script Properties, rate-limits requests, and falls back to the local parser. Customer contact rows automatically pack Email, Phone, Address, and Tax Number into the two available PDF rows without mis-saving Address/TIN as a phone number.
 
 ## Important Decisions
 - Use Vite/React because the original invoice generator is React/Vite and should stay visually/functionally the same.
@@ -80,6 +119,7 @@ Create a GitHub-friendly invoice workflow website that:
 - Quotation documents should stay outside the invoice workflow unless Chloe manually changes them into invoices.
 - Desmond's Invoices page should stay compact by default: show latest 5, search invoice number for direct lookup, then mark paid from the found row.
 - Avoid silent mistakes in the workflow: paid marks should be reversible briefly, copy actions should show visual confirmation, and SQL export should clearly block/flag invoice upload when customer import is still pending.
+- Do not expose SQL Account Access Key or Secret Key in the GitHub Pages frontend. Store SQL API configuration in Apps Script properties and send only paid, not-yet-uploaded invoices through the backend. Keep the current Excel copy/import path as a fallback during rollout.
 
 ## Commands Already Run
 - Checked current folder contents.
@@ -142,7 +182,13 @@ Create a GitHub-friendly invoice workflow website that:
 - Ran Vite production build successfully after improving Pay / Not Paid feedback.
 - Ran Vite production build successfully after adding the Invoices month selector.
 - Ran Vite production build successfully after the CSS-only UI polish. New committed build assets are `dist/assets/index-ChE-lwu4.js`, `dist/assets/index-Dppyg_px.css`, and `dist/assets/pdf-BP0nbkRs.js`.
+- Tested `RM1,000 - RM100 + 4%` in both pasted-line orders; both produce a `RM36` gateway charge. Vite production build completed successfully.
+- Tested contact-row fallback for Address replacing Email, Address + Tax Number replacing both missing contact fields, and Address filling a missing Phone row. Apps Script syntax and Vite production build passed; live Gemini still requires an API key and Apps Script redeployment.
 
 ## Exact Next Steps
-1. Ask Chloe for the cropped Sarah / Corpway invoice number before importing that one.
-2. Continue testing the live site workflow: Invoice download auto-saves; Quotation download does not save; Invoices page month selector/latest-5/search/load-more/customer-search behavior works; `Mark Paid` instantly turns the row green, `Not Paid` reopens it, and SQL Queue only shows paid/not uploaded documents with Step 1 blocking Step 2 when needed.
+1. On the SQL Windows computer, install/start SQL API Service and complete `Test Connection = OK`.
+2. Create the dedicated SQL `APIUser`, generate its Access Key/Secret Key, and add them to Apps Script Script Properties using `docs/SQL_API_SETUP.md`.
+3. Confirm `sqlConnectionStatus` while no SQL Connect user is logged in, then run `sqlSyncPaidInvoices` against one controlled paid MYR invoice and verify it in SQL Account.
+4. Add `Scheduler.gs` to the live Apps Script project and run `installSqlSyncTriggers` once after the controlled upload succeeds.
+5. After the controlled test passes, add authenticated website controls for direct SQL upload; keep the current Excel copy/import route as fallback.
+6. Ask Chloe for the cropped Sarah / Corpway invoice number before importing that one.

@@ -1,6 +1,6 @@
 const SPREADSHEET_ID = "1gMMS_y1z_2wIMUa5fiZwyCA2l0p3KJB64LXx_CBUE78";
 const T = { inv: "Invoices", item: "Invoice Items", pay: "Payments", sql: "SQL Export", cust: "SQL Customers", custExp: "Customer Export", set: "Settings", log: "Logs" };
-const IH = ["Invoice ID","Internal Invoice No","Document Type","Status","SQL Status","Customer Name","SQL Customer Code","Customer Email","Customer Phone","Billing Address","Invoice Date","Due Date","Currency","Subtotal","Discount","Tax","Total","Notes","Terms","TIN","ID Type","ID No","PDF File URL","Created By","Created At","Updated At","Sent At","Paid At","Payment Ref","Payment Proof URL","Uploaded To SQL At","Uploaded By","Cancelled At","Cancelled Reason"];
+const IH = ["Invoice ID","Internal Invoice No","Document Type","Status","SQL Status","Customer Name","SQL Customer Code","Customer Email","Customer Phone","Billing Address","Invoice Date","Due Date","Currency","Subtotal","Discount","Tax","Total","Notes","Terms","TIN","ID Type","ID No","PDF File URL","Created By","Created At","Updated At","Sent At","Paid At","Payment Ref","Payment Proof URL","Uploaded To SQL At","Uploaded By","Cancelled At","Cancelled Reason","SQL Doc No","SQL Doc Key","SQL API Error"];
 const ITH = ["Item ID","Invoice ID","Internal Invoice No","Sequence","Item Code","Description","Quantity","UOM","Unit Price","Discount","Tax Code","Tax Amount","Amount","Account Code","Created At","Updated At"];
 const PH = ["Payment ID","Invoice ID","Internal Invoice No","Amount Paid","Payment Date","Payment Ref","Payment Proof URL","Marked By","Created At"];
 const LH = ["Timestamp","User","Action","Invoice ID","Internal Invoice No","Details"];
@@ -15,7 +15,7 @@ function doPost(e) {
   try {
     q = req(e);
     setup();
-    const map = { setup: () => ({ ok: true }), listInvoices, createInvoice, markPaid, reopenInvoices, markUploaded, markCustomersUploaded, cancelInvoice, refreshSqlExport, parseInvoiceWithGemini };
+    const map = { setup: () => ({ ok: true }), listInvoices, createInvoice, markPaid, reopenInvoices, confirmSqlUpload, markUploaded, markCustomersUploaded, cancelInvoice, refreshSqlExport, sqlSyncStatus, parseInvoiceWithGemini };
     if (!map[q.action]) throw new Error("Unknown action: " + q.action);
     const out = map[q.action](q);
     return q.transport === "iframe" ? html(out, q.requestId) : json(out);
@@ -123,6 +123,17 @@ function markUploaded(q) {
   const inv = updateInv(q.invoiceId, { Status:"Uploaded to SQL","SQL Status":"Uploaded to SQL","Uploaded To SQL At":now(),"Uploaded By":user(q),"Updated At":now() });
   log(q, "markUploaded", q.invoiceId, inv["Internal Invoice No"], "Uploaded"); return { ok: true, invoiceNo: inv["Internal Invoice No"] };
 }
+function confirmSqlUpload(q) {
+  const ids = (q.invoiceIds || []).map(String), nos = [];
+  rows(T.inv).forEach(inv => {
+    const id = String(inv["Invoice ID"] || "");
+    if (ids.indexOf(id) < 0 || inv.Status !== "Paid" || inv["SQL Status"] === "Uploaded to SQL") return;
+    const out = updateInv(id, { "SQL Status":"Ready for SQL","SQL API Error":"","Updated At":now() });
+    nos.push(out["Internal Invoice No"]);
+  });
+  log(q, "confirmSqlUpload", "", "", `Ready for SQL: ${nos.join(", ")}`);
+  return { ok: true, count: nos.length, invoiceNos: nos };
+}
 function markCustomersUploaded(q) {
   const keys = (q.customerKeys || []).map(String), sh = ss().getSheetByName(T.cust), vals = sh.getDataRange().getValues(), h = vals[0], ix = h.indexOf("Customer Key");
   let n = 0; for (let r = 1; r < vals.length; r++) if (keys.indexOf(String(vals[r][ix])) >= 0) {
@@ -183,3 +194,4 @@ function refreshSqlExport(q) {
   ch.getRange(1,1,1,CUSTH.length).setValues([CUSTH]); if (custOut.length) ch.getRange(2,1,custOut.length,CUSTH.length).setValues(custOut); ch.setFrozenRows(1);
   log(q, "refreshSqlExport", "", "", `Prepared ${pending.length} customer(s), ${out.length} invoice row(s)`); return { ok: true, headers: SQLH, rows: out, customerHeaders: CUSTH, customerRows: custOut, customers: pending };
 }
+function sqlSyncStatus() { const raw = PropertiesService.getScriptProperties().getProperty("SQL_SYNC_LAST_RESULT") || ""; if (!raw) return { ok: true, status: null }; try { return { ok: true, status: JSON.parse(raw) }; } catch (_) { return { ok: true, status: { ranAt: "", uploaded: [], failed: [], raw } }; } }
