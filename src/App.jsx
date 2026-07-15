@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ClipboardList, Database, FilePlus2, UploadCloud } from "lucide-react";
+import { CheckCircle2, ClipboardList, Database, FilePlus2 } from "lucide-react";
 import InvoiceGenerator from "./InvoiceGenerator.jsx";
 import { callWorkflowApi } from "./workflowApi.js";
 
 const NAV_ITEMS = [
   { key: "new", label: "New Invoice", icon: FilePlus2 },
   { key: "invoices", label: "Invoices", icon: ClipboardList },
-  { key: "sql", label: "SQL Queue", icon: Database },
+  { key: "sql", label: "SQL Upload", icon: Database },
 ];
 
 const MONTH_NAMES = [
@@ -69,6 +69,30 @@ function displayDateTime(value) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function nextSqlRunLabel() {
+  const now = new Date();
+  const windows = [[10, 30], [11, 0], [22, 30], [23, 0]];
+  for (const [hour, minute] of windows) {
+    const run = new Date(now);
+    run.setHours(hour, minute, 0, 0);
+    if (run > now) return `Today ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  }
+  return "Tomorrow 10:30";
+}
+
+function sqlStatusText(info, pendingCount, readyCount) {
+  if (info) {
+    const uploaded = info.uploaded || [];
+    const failed = info.failed || [];
+    if (failed.length) return `Last run ${displayDateTime(info.ranAt)} needs checking.`;
+    if (uploaded.length) return `Last run ${displayDateTime(info.ranAt)} uploaded successfully.`;
+    return `Last run ${displayDateTime(info.ranAt)} found nothing waiting.`;
+  }
+  if (readyCount) return `Waiting for ${nextSqlRunLabel()} upload.`;
+  if (pendingCount) return "Review and confirm these paid invoices.";
+  return "Nothing waiting for SQL.";
 }
 
 function invoiceMonthKey(value) {
@@ -182,12 +206,6 @@ function statusClass(status) {
     .replace(/^-|-$/g, "");
 }
 
-function rowsToTsv(rows) {
-  return (rows || [])
-    .map((row) => row.map((cell) => String(cell ?? "").replace(/\t/g, " ").replace(/\r?\n/g, " ")).join("\t"))
-    .join("\n");
-}
-
 function confirmOverwrite(existing, nextInvoice) {
   const oldCustomer = existing?.customerName || "Unknown customer";
   const oldTotal = money(existing?.total, nextInvoice.currency);
@@ -204,11 +222,6 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState("");
   const [invoices, setInvoices] = useState([]);
   const [items, setItems] = useState([]);
-  const [sqlRows, setSqlRows] = useState([]);
-  const [customerRows, setCustomerRows] = useState([]);
-  const [customerQueue, setCustomerQueue] = useState([]);
-  const [customerUploadDone, setCustomerUploadDone] = useState(false);
-  const [invoiceUploadDone, setInvoiceUploadDone] = useState(false);
   const [filter, setFilter] = useState("active");
   const [monthFilter, setMonthFilter] = useState(currentMonthKey());
   const [invoiceSearch, setInvoiceSearch] = useState("");
@@ -216,7 +229,6 @@ export default function App() {
   const [recentPaidUndo, setRecentPaidUndo] = useState(null);
   const [markingPaidNo, setMarkingPaidNo] = useState("");
   const [reopeningNo, setReopeningNo] = useState("");
-  const [copiedRowsLabel, setCopiedRowsLabel] = useState("");
   const [sqlSyncInfo, setSqlSyncInfo] = useState(null);
 
   const paidQueue = useMemo(
@@ -247,11 +259,9 @@ export default function App() {
     () => invoicesInSelectedMonth.filter((invoice) => invoice.Status === "Paid" && invoice["SQL Status"] !== "Uploaded to SQL"),
     [invoicesInSelectedMonth],
   );
-  const customerStepPending = customerQueue.length > 0 && !customerUploadDone;
   const sqlWarnings = useMemo(() => {
     const warnings = [];
     if (pendingSqlConfirmQueue.length) warnings.push(`${pendingSqlConfirmQueue.length} paid invoice(s) need Chloe confirmation before API upload.`);
-    if (customerStepPending) warnings.push("New customers detected. Upload Customer rows before Invoice rows.");
     const missingPhone = paidQueue.filter((invoice) => !textValue(invoice["Customer Phone"]));
     if (missingPhone.length) warnings.push(`${missingPhone.length} paid invoice(s) have no customer phone.`);
     const foreignCurrency = paidQueue.filter((invoice) => textValue(invoice.Currency) && textValue(invoice.Currency) !== "RM");
@@ -259,7 +269,7 @@ export default function App() {
     const negativeRows = items.filter((item) => paidQueue.some((invoice) => invoice["Invoice ID"] === item["Invoice ID"]) && parseAmount(item.Amount) < 0);
     if (negativeRows.length) warnings.push(`${negativeRows.length} SQL item row(s) are negative amount rows.`);
     return warnings;
-  }, [customerStepPending, items, paidQueue, pendingSqlConfirmQueue]);
+  }, [items, paidQueue, pendingSqlConfirmQueue]);
 
   useEffect(() => {
     if (!recentPaidUndo) return undefined;
@@ -386,26 +396,6 @@ export default function App() {
     await reopenInvoice({ "Internal Invoice No": recentPaidUndo.invoiceNo }, "Payment mark undone");
   }
 
-  async function markInvoicesUploaded() {
-    if (!paidQueue.length) {
-      setMessage("No paid invoices waiting for SQL.");
-      return;
-    }
-    if (!window.confirm("Mark paid invoices as uploaded to SQL?")) return;
-    const count = paidQueue.length;
-    try {
-      for (const invoice of paidQueue) {
-        await callWorkflowApi("markUploaded", { invoiceId: invoice["Invoice ID"] });
-      }
-      setSqlRows([]);
-      await loadInvoices();
-      setInvoiceUploadDone(true);
-      setMessage(`All ${count} invoice(s) uploaded and archived.`);
-    } catch (error) {
-      setMessage(error.message);
-    }
-  }
-
   async function confirmScheduledUpload() {
     if (!paidQueue.length) {
       setMessage("No paid invoices waiting for SQL.");
@@ -427,55 +417,20 @@ export default function App() {
         invoiceIds: pendingSqlConfirmQueue.map((invoice) => invoice["Invoice ID"]),
       });
       await loadInvoices();
-      await refreshSqlExport();
-      setMessage(`${data.count || 0} invoice(s) confirmed. They will upload during the next SQL API window.`);
+      setMessage(`${data.count || 0} invoice(s) confirmed. Waiting for ${nextSqlRunLabel()} SQL API upload.`);
     } catch (error) {
       await loadInvoices();
       setMessage(error.message);
     }
   }
 
-  async function refreshSqlExport() {
+  async function clearSqlUploadView() {
+    if (!window.confirm("Clear the SQL upload status view? Uploaded invoices stay in Google Sheet history.")) return;
     try {
-      setCustomerUploadDone(false);
-      setInvoiceUploadDone(false);
-      const data = await callWorkflowApi("refreshSqlExport");
-      setSqlRows(data.rows || []);
-      setCustomerRows(data.customerRows || []);
-      setCustomerQueue(data.customers || []);
-      setMessage(`Prepared ${(data.customers || []).length} customer(s), ${(data.rows || []).length} invoice row(s).`);
-    } catch (error) {
-      setMessage(error.message);
-    }
-  }
-
-  async function copyRows(rows, label) {
-    const text = rowsToTsv(rows);
-    if (!text) {
-      setMessage(`No ${label} rows yet. Refresh SQL Export first.`);
-      return;
-    }
-    await navigator.clipboard.writeText(text);
-    setCopiedRowsLabel(label);
-    window.setTimeout(() => setCopiedRowsLabel((current) => (current === label ? "" : current)), 2500);
-    setMessage(`${label} rows copied.`);
-  }
-
-  async function markCustomersUploaded() {
-    if (!customerQueue.length) {
-      setMessage("No new customers waiting for SQL.");
-      return;
-    }
-    if (!window.confirm("Mark these customers as uploaded to SQL?")) return;
-    try {
-      const data = await callWorkflowApi("markCustomersUploaded", {
-        customerKeys: customerQueue.map((customer) => customer["Customer Key"]),
-      });
-      setCustomerRows([]);
-      setCustomerQueue([]);
-      await refreshSqlExport();
-      setCustomerUploadDone(true);
-      setMessage(`All ${data.count || 0} customer(s) uploaded and archived.`);
+      await callWorkflowApi("clearSqlSyncStatus");
+      setSqlSyncInfo(null);
+      await loadInvoices();
+      setMessage("SQL upload status view cleared. History is still kept in Google Sheet.");
     } catch (error) {
       setMessage(error.message);
     }
@@ -651,28 +606,55 @@ export default function App() {
           <header className="workflow-page-header">
             <div>
               <p className="brand-label">SQL Account</p>
-              <h1>SQL Queue</h1>
+              <h1>SQL Upload</h1>
             </div>
             <div className="workflow-row-actions">
-              <button type="button" className="secondary-button" onClick={loadInvoices}>Refresh Invoices</button>
-              <button type="button" className="primary-button" onClick={refreshSqlExport}>Refresh SQL Export</button>
+              <button type="button" className="secondary-button" onClick={loadInvoices}>Refresh</button>
+              <button type="button" className="secondary-button danger-button" onClick={clearSqlUploadView}>Clear Completed View</button>
             </div>
           </header>
-          <p className="hint">Paid invoices stay here until Chloe confirms them for the scheduled SQL API upload.</p>
-          {sqlSyncInfo ? (
-            <div className={`sql-sync-card ${sqlSyncInfo.ok ? "is-ok" : "is-error"}`}>
+          <p className="hint">Paid invoices only upload to SQL after Chloe confirms them. Customers are created automatically by the API before the invoice is uploaded.</p>
+          <section className="sql-command-panel">
+            <div className="workflow-stats sql-status-grid">
               <div>
-                <span>Last SQL API run</span>
-                <strong>{displayDateTime(sqlSyncInfo.ranAt)} · Uploaded {(sqlSyncInfo.uploaded || []).length} · Failed {(sqlSyncInfo.failed || []).length}</strong>
+                <span>Need confirm</span>
+                <strong>{pendingSqlConfirmQueue.length}</strong>
               </div>
-              {(sqlSyncInfo.uploaded || []).length ? (
-                <p>Uploaded: {(sqlSyncInfo.uploaded || []).map((row) => row.invoiceNo).join(", ")}</p>
+              <div>
+                <span>Waiting upload</span>
+                <strong>{readySqlQueue.length}</strong>
+              </div>
+              <div>
+                <span>Next API window</span>
+                <strong>{readySqlQueue.length ? nextSqlRunLabel() : "-"}</strong>
+              </div>
+            </div>
+            <div className={`sql-sync-card ${sqlSyncInfo?.failed?.length ? "is-error" : "is-ok"}`}>
+              <div>
+                <span>Current status</span>
+                <strong>{sqlStatusText(sqlSyncInfo, pendingSqlConfirmQueue.length, readySqlQueue.length)}</strong>
+              </div>
+              {readySqlQueue.length ? <p>Confirmed invoices will upload automatically during the next quiet SQL window.</p> : null}
+              {sqlSyncInfo?.uploaded?.length ? (
+                <p>Uploaded: {sqlSyncInfo.uploaded.map((row) => row.invoiceNo).join(", ")}</p>
               ) : null}
-              {(sqlSyncInfo.failed || []).length ? (
-                <p>Failed: {(sqlSyncInfo.failed || []).map((row) => `${row.invoiceNo}: ${row.error}`).join(" | ")}</p>
+              {sqlSyncInfo?.failed?.length ? (
+                <p>Failed: {sqlSyncInfo.failed.map((row) => `${row.invoiceNo}: ${row.error}`).join(" | ")}</p>
               ) : null}
             </div>
-          ) : null}
+            <div className="workflow-row-actions sql-main-actions">
+              <button
+                type="button"
+                className={`primary-button ${!pendingSqlConfirmQueue.length && readySqlQueue.length ? "is-copied" : ""}`}
+                onClick={confirmScheduledUpload}
+                disabled={!pendingSqlConfirmQueue.length}
+              >
+                <CheckCircle2 aria-hidden="true" />
+                {!pendingSqlConfirmQueue.length && readySqlQueue.length ? "Waiting for API" : "Confirm Upload"}
+              </button>
+              <button type="button" className="secondary-button" onClick={loadSqlSyncStatus}>Refresh Status</button>
+            </div>
+          </section>
           {sqlWarnings.length ? (
             <div className="workflow-warning-panel">
               {sqlWarnings.map((warning) => <p key={warning}>{warning}</p>)}
@@ -681,125 +663,38 @@ export default function App() {
           <section className="workflow-section">
             <div className="workflow-page-header compact">
               <div>
-                <p className="brand-label">Step 1</p>
-                <h2>Customer Import <span className={`step-state ${customerUploadDone ? "is-done" : customerQueue.length ? "is-ready" : ""}`}>{customerUploadDone ? "Done" : customerQueue.length ? "Ready" : "No new customers"}</span></h2>
-              </div>
-              <div className="workflow-row-actions">
-                <button
-                  type="button"
-                  className={`secondary-button ${copiedRowsLabel === "Customer" ? "is-copied" : ""}`}
-                  onClick={() => copyRows(customerRows, "Customer")}
-                >
-                  {copiedRowsLabel === "Customer" ? "Copied" : "Copy Customer Rows"}
-                </button>
-                <button
-                  type="button"
-                  className={`secondary-button upload-done-button ${customerUploadDone ? "is-done" : ""}`}
-                  onClick={markCustomersUploaded}
-                >
-                  {customerUploadDone ? <CheckCircle2 aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
-                  {customerUploadDone ? "All Uploaded" : "Customers Uploaded"}
-                </button>
+                <p className="brand-label">Today's upload</p>
+                <h2>Invoices to SQL</h2>
               </div>
             </div>
             <div className="workflow-table-wrap">
               <table className="workflow-table">
                 <thead>
                   <tr>
-                    <th>Code</th>
+                    <th>No.</th>
                     <th>Customer</th>
-                    <th>Phone</th>
+                    <th>Date</th>
+                    <th>Total</th>
                     <th>Status</th>
+                    <th>Error</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {customerQueue.length ? customerQueue.map((customer) => (
-                    <tr key={customer["Customer Key"]}>
-                      <td><strong>{customer["SQL Customer Code"]}</strong></td>
-                      <td>{customer["Customer Name"]}</td>
-                      <td>{customer["Customer Phone"]}</td>
-                      <td><span className={`workflow-status ${statusClass(customer.Status)}`}>{customer.Status}</span></td>
+                  {paidQueue.length ? [...paidQueue].sort(sortInvoicesByLatest).map((invoice) => (
+                    <tr key={invoice["Invoice ID"]}>
+                      <td><strong>{invoice["Internal Invoice No"]}</strong></td>
+                      <td>{invoice["Customer Name"]}</td>
+                      <td>{displayDate(invoice["Invoice Date"])}</td>
+                      <td>{money(invoice.Total, invoice.Currency)}</td>
+                      <td><span className={`workflow-status ${statusClass(invoice["SQL Status"])}`}>{invoice["SQL Status"] || "Not Uploaded"}</span></td>
+                      <td>{invoice["SQL API Error"] || ""}</td>
                     </tr>
                   )) : (
-                    <tr><td colSpan="4" className="workflow-empty">No new customers waiting for SQL.</td></tr>
+                    <tr><td colSpan="6" className="workflow-empty">No paid invoices waiting for SQL.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
-            <label className="field workflow-export">
-              <span>Customer template rows</span>
-              <textarea readOnly value={rowsToTsv(customerRows)} />
-            </label>
-          </section>
-          <section className="workflow-section">
-            <div className="workflow-page-header compact">
-              <div>
-                <p className="brand-label">Step 2</p>
-                <h2>Invoice Import <span className={`step-state ${invoiceUploadDone ? "is-done" : customerStepPending ? "is-blocked" : readySqlQueue.length ? "is-done" : paidQueue.length ? "is-ready" : ""}`}>{invoiceUploadDone ? "Done" : customerStepPending ? "Finish Step 1 first" : readySqlQueue.length ? "Confirmed" : paidQueue.length ? "Needs confirm" : "No paid invoices"}</span></h2>
-              </div>
-              <div className="workflow-row-actions">
-                <button
-                  type="button"
-                  className={`primary-button ${!pendingSqlConfirmQueue.length && readySqlQueue.length ? "is-copied" : ""}`}
-                  onClick={confirmScheduledUpload}
-                  disabled={customerStepPending || !pendingSqlConfirmQueue.length}
-                >
-                  <CheckCircle2 aria-hidden="true" />
-                  {!pendingSqlConfirmQueue.length && readySqlQueue.length ? "Confirmed for API" : "Confirm Scheduled Upload"}
-                </button>
-                <button
-                  type="button"
-                  className={`secondary-button ${copiedRowsLabel === "Invoice" ? "is-copied" : ""}`}
-                  onClick={() => copyRows(sqlRows, "Invoice")}
-                  disabled={customerStepPending}
-                >
-                  {copiedRowsLabel === "Invoice" ? "Copied" : "Copy Invoice Rows"}
-                </button>
-                <button
-                  type="button"
-                  className={`secondary-button upload-done-button ${invoiceUploadDone ? "is-done" : ""}`}
-                  onClick={markInvoicesUploaded}
-                  disabled={customerStepPending}
-                >
-                  {invoiceUploadDone ? <CheckCircle2 aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
-                  {invoiceUploadDone ? "All Uploaded" : "Invoices Uploaded"}
-                </button>
-              </div>
-            </div>
-          <div className="workflow-table-wrap">
-            <table className="workflow-table">
-              <thead>
-                <tr>
-                  <th>No.</th>
-                  <th>Customer</th>
-                  <th>Item</th>
-                  <th>Amount</th>
-                  <th>SQL Status</th>
-                  <th>Error</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paidQueue.flatMap((invoice) => {
-                  const invoiceItems = items.filter((item) => item["Invoice ID"] === invoice["Invoice ID"]);
-                  return invoiceItems.map((item) => (
-                    <tr key={`${invoice["Invoice ID"]}-${item["Item ID"]}`}>
-                      <td><strong>{invoice["Internal Invoice No"]}</strong></td>
-                      <td>{invoice["Customer Name"]}</td>
-                      <td>{item.Description}</td>
-                      <td>{money(item.Amount, invoice.Currency)}</td>
-                      <td><span className={`workflow-status ${statusClass(invoice["SQL Status"])}`}>{invoice["SQL Status"] || "Not Uploaded"}</span></td>
-                      <td>{invoice["SQL API Error"] || ""}</td>
-                    </tr>
-                  ));
-                })}
-                {!paidQueue.length ? <tr><td colSpan="6" className="workflow-empty">No paid invoices waiting for SQL.</td></tr> : null}
-              </tbody>
-            </table>
-          </div>
-          <label className="field workflow-export">
-            <span>Invoice template rows</span>
-            <textarea readOnly value={rowsToTsv(sqlRows)} />
-          </label>
           </section>
         </main>
       ) : null}

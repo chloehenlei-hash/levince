@@ -1,5 +1,15 @@
 # Worklog
 
+## SQL Upload Page Simplified - 2026-07-15
+
+- Replaced the old SQL Queue two-step Customer Import / Invoice Import UI with one simpler `SQL Upload` page.
+- Removed the visible `Copy Customer Rows` and `Copy Invoice Rows` fallback controls from the main website flow because SQL API upload now creates customers before invoices.
+- Added a compact SQL command panel showing invoices needing confirmation, invoices waiting for scheduled API upload, and the next API window.
+- Kept the safe gate: Chloe still has to press `Confirm Upload` before paid invoices become `Ready for SQL`.
+- Added `Clear Completed View`, which clears only the last SQL sync status display; uploaded invoice history stays in Google Sheet.
+- Added Apps Script action `clearSqlSyncStatus` for that non-destructive clear action.
+- Production build passed and Apps Script syntax checks passed.
+
 ## Services UX and Explicit Paste Modes - 2026-07-15
 
 - Split Quick Paste into two explicit actions: `Normal Organise` uses only the local parser; `AI Organise` calls Gemini only when Chloe chooses it. Pasting text no longer automatically organises or calls AI.
