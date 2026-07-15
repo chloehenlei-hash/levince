@@ -19,6 +19,7 @@
 - SQL Queue now shows a last-run card, invoice SQL status, and SQL API error messages so Chloe can tell whether the scheduled upload happened.
 - Removed `dist/` from `.gitignore` because GitHub Pages currently publishes the committed `dist` output and new build assets must be visible to `git add`.
 - Production build passed and Apps Script syntax checks passed. Current build assets include `dist/assets/index-gwch3tOz.js`, `dist/assets/index-Cr7aF_zZ.css`, and `dist/assets/pdf-D7tHI2u8.js`.
+- Committed and pushed to GitHub main as `aa7657d` (`Add scheduled SQL upload confirmation`).
 
 ## Gemini Smart Paste Connected - 2026-07-15
 
