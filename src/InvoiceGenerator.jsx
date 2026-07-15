@@ -93,6 +93,7 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "", exist
   const [error, setError] = useState("");
   const [quickPasteText, setQuickPasteText] = useState("");
   const [quickPasteStatus, setQuickPasteStatus] = useState("");
+  const [isAiOrganising, setIsAiOrganising] = useState(false);
   const [isPdfDragOver, setIsPdfDragOver] = useState(false);
   const [tableLayout, setTableLayout] = useState("normal");
   const lastPreviewUrl = useRef("");
@@ -279,7 +280,11 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "", exist
     }));
   }
 
-  function addServiceLine(groupId, dateId) {
+  function addServiceLine(groupId, dateId, kind = "charge") {
+    const newLine =
+      kind === "spacer"
+        ? createServiceLine({ kind: "spacer", isSpacer: true })
+        : createServiceLine({ kind });
     setInvoice((current) => ({
       ...current,
       serviceGroups: current.serviceGroups.map((group) =>
@@ -288,7 +293,7 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "", exist
               ...group,
               dates: group.dates.map((dateGroup) =>
                 dateGroup.id === dateId
-                  ? { ...dateGroup, lines: [...dateGroup.lines, createServiceLine()] }
+                  ? { ...dateGroup, lines: [...dateGroup.lines, newLine] }
                   : dateGroup,
               ),
             }
@@ -411,37 +416,53 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "", exist
     clearGeneratedOutput();
   }
 
-  async function applyQuickPasteText(value) {
+  function applyNormalPasteText(value) {
     const text = String(value || "").trim();
     if (!text) {
       setQuickPasteStatus("Paste invoice details first.");
       return;
     }
 
-    setQuickPasteStatus("Organising details...");
+    setInvoice((current) => parseInvoiceTextDetails(text, current));
+    setQuickPasteStatus("Normal organise complete. Please review the details.");
+    setError("");
+  }
+
+  async function applyAiPasteText(value) {
+    const text = String(value || "").trim();
+    if (!text) {
+      setQuickPasteStatus("Paste invoice details first.");
+      return;
+    }
+
+    setIsAiOrganising(true);
+    setQuickPasteStatus("AI is organising the details...");
     try {
       const result = await callWorkflowApi("parseInvoiceWithGemini", { text });
       const organisedText = String(result.normalizedText || "").trim();
       if (!organisedText) throw new Error("No organised text returned.");
       setInvoice((current) => parseInvoiceTextDetails(organisedText, current));
-      setQuickPasteStatus("Smart details applied. Please check the amounts before generating.");
-    } catch {
-      setInvoice((current) => parseInvoiceTextDetails(text, current));
-      setQuickPasteStatus("Details applied. Please review before generating.");
+      setQuickPasteStatus("AI organise complete. Please check the details and amounts.");
+    } catch (aiError) {
+      setQuickPasteStatus(aiError?.message || "AI organise failed. Try Normal Organise instead.");
+    } finally {
+      setIsAiOrganising(false);
     }
     setError("");
   }
 
   function applyQuickPaste() {
-    applyQuickPasteText(quickPasteText);
+    applyNormalPasteText(quickPasteText);
+  }
+
+  function applyAiQuickPaste() {
+    applyAiPasteText(quickPasteText);
   }
 
   function handleQuickPaste(event) {
     const text = event.clipboardData?.getData("text/plain") || "";
     if (!text.trim()) return;
-    event.preventDefault();
-    setQuickPasteText(text);
-    applyQuickPasteText(text);
+    setQuickPasteStatus("Details pasted. Choose Normal Organise or AI Organise.");
   }
 
   return (
@@ -556,14 +577,15 @@ For airport arrival, 90 minutes waiting time is included.`}
                 onPaste={handleQuickPaste}
               />
             </label>
-            <p className="mini-instruction">
-              Remarks: start remark lines with <code>**</code>, or add a <code>Remark</code> heading and put the
-                remark text below it. Remarks stay in the Description column with Qty and Amount blank.
-            </p>
+            <p className="mini-instruction">Each pasted line stays as its own invoice row. Choose AI only when the text is messy.</p>
             <div className="paste-actions">
               <button type="button" className="secondary-button" onClick={applyQuickPaste}>
-                <Sparkles aria-hidden="true" />
-                Smart Apply
+                <FileText aria-hidden="true" />
+                Normal Organise
+              </button>
+              <button type="button" className="ai-button" onClick={applyAiQuickPaste} disabled={isAiOrganising}>
+                {isAiOrganising ? <Loader2 className="spin" aria-hidden="true" /> : <Sparkles aria-hidden="true" />}
+                AI Organise
               </button>
               {quickPasteStatus ? <span>{quickPasteStatus}</span> : null}
             </div>
@@ -676,10 +698,10 @@ For airport arrival, 90 minutes waiting time is included.`}
 
           <Section title="Services">
             <p className="mini-instruction">
-              Rows with a blank Amount are treated as description-only and will not affect the subtotal. Fill Qty and
-              Amount only for chargeable rows.
+              Add a charge, a text-only note, or a blank line. Service date is optional.
             </p>
-            <div className="table-layout-panel">
+            <details className="service-options">
+              <summary>More options</summary>
               <label className="field table-layout-field">
                 <span>Description width</span>
                 <select value={tableLayout} onChange={(event) => setTableLayout(event.target.value)}>
@@ -688,13 +710,13 @@ For airport arrival, 90 minutes waiting time is included.`}
                   <option value="extraWide">Extra wide</option>
                 </select>
               </label>
-            </div>
+            </details>
             <div className="service-groups">
               {invoice.serviceGroups.map((group, groupIndex) => (
                 <article className="service-group" key={group.id}>
                   <div className="service-group-header">
                     <Field
-                      label={`Service heading ${groupIndex + 1}`}
+                      label={invoice.serviceGroups.length > 1 ? `Section title ${groupIndex + 1}` : "Section title"}
                       value={group.heading}
                       required
                       placeholder="Private Chauffeur Service"
@@ -715,31 +737,37 @@ For airport arrival, 90 minutes waiting time is included.`}
                       <div className="service-date-card" key={dateGroup.id}>
                         <div className="service-date-header">
                           <Field
-                            label="Service date"
+                            label="Service date (optional)"
                             value={dateGroup.date}
-                            required
-                            placeholder="10th May"
+                            placeholder="Leave blank if there is no service date"
                             onChange={(value) => updateServiceDate(group.id, dateGroup.id, "date", value)}
                           />
                           <button
                             type="button"
                             className="icon-button"
                             onClick={() => removeServiceDate(group.id, dateGroup.id)}
-                            title="Remove date"
+                            title="Remove this date group"
                           >
                             <Trash2 aria-hidden="true" />
                           </button>
                         </div>
 
                         <div className="line-items">
-                          <div className="line-head service-line-head">
-                            <span>Description</span>
-                            <span>Qty</span>
-                            <span>Amount</span>
-                            <span />
-                          </div>
-                          {dateGroup.lines.map((line) => (
-                            <div className="line-row service-line-row" key={line.id}>
+                          {dateGroup.lines.map((line) => {
+                            const lineKind = line.kind || (line.isSpacer ? "spacer" : line.isNote ? "note" : "charge");
+                            if (lineKind === "spacer") {
+                              return (
+                                <div className="service-spacer-row" key={line.id}>
+                                  <span>Blank line</span>
+                                  <button type="button" className="icon-button" onClick={() => removeServiceLine(group.id, dateGroup.id, line.id)} title="Remove blank line">
+                                    <Trash2 aria-hidden="true" />
+                                  </button>
+                                </div>
+                              );
+                            }
+                            return (
+                            <div className={`line-row service-line-row is-${lineKind}`} key={line.id}>
+                              <span className={`line-kind-badge is-${lineKind}`}>{lineKind === "note" ? "Note" : "Charge"}</span>
                               <label className="line-input description-input">
                                 <span>Description</span>
                                 <input
@@ -756,7 +784,7 @@ For airport arrival, 90 minutes waiting time is included.`}
                                   }
                                 />
                               </label>
-                              <label className="line-input qty-input">
+                              {lineKind === "charge" ? <label className="line-input qty-input">
                                 <span>Qty</span>
                                 <input
                                   value={line.qty}
@@ -766,8 +794,8 @@ For airport arrival, 90 minutes waiting time is included.`}
                                     updateServiceLine(group.id, dateGroup.id, line.id, "qty", event.target.value)
                                   }
                                 />
-                              </label>
-                              <label className="line-input amount-input">
+                              </label> : null}
+                              {lineKind === "charge" ? <label className="line-input amount-input">
                                 <span>Amount</span>
                                 <input
                                   value={line.amount}
@@ -777,7 +805,7 @@ For airport arrival, 90 minutes waiting time is included.`}
                                     updateServiceLine(group.id, dateGroup.id, line.id, "amount", event.target.value)
                                   }
                                 />
-                              </label>
+                              </label> : null}
                               <button
                                 type="button"
                                 className="icon-button"
@@ -787,18 +815,21 @@ For airport arrival, 90 minutes waiting time is included.`}
                                 <Trash2 aria-hidden="true" />
                               </button>
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
 
-                        <button
-                          type="button"
-                          className="secondary-button compact-button"
-                          onClick={() => addServiceLine(group.id, dateGroup.id)}
-                          title="Add description under this date"
-                        >
-                          <Plus aria-hidden="true" />
-                          Add description
-                        </button>
+                        <div className="service-add-actions">
+                          <button type="button" className="secondary-button compact-button" onClick={() => addServiceLine(group.id, dateGroup.id, "charge")}>
+                            <Plus aria-hidden="true" /> Add charge
+                          </button>
+                          <button type="button" className="secondary-button compact-button" onClick={() => addServiceLine(group.id, dateGroup.id, "note")}>
+                            <Plus aria-hidden="true" /> Add note
+                          </button>
+                          <button type="button" className="secondary-button compact-button" onClick={() => addServiceLine(group.id, dateGroup.id, "spacer")}>
+                            <Plus aria-hidden="true" /> Blank line
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>

@@ -218,6 +218,7 @@ function createPlainDescriptionLine(description) {
     description: normalisePlainDescriptionLine(description),
     qty: "",
     amount: "",
+    kind: "note",
   });
 }
 
@@ -238,6 +239,7 @@ function createSpacerLine() {
     qty: "",
     amount: "",
     isSpacer: true,
+    kind: "spacer",
   });
 }
 
@@ -988,9 +990,12 @@ export function parsePastedInvoiceDetails(rawText, currentInvoice) {
     const parsedLine = splitDescriptionAndAmount(line);
 
     if (parsedLine.amount && currentServiceContext) {
+      if (parsedLine.description) {
+        currentDateGroup.lines.push(createPlainDescriptionLine(currentServiceContext));
+      }
       if (isVehicleDetailLine(parsedLine.description)) {
         const serviceLine = createServiceLine({
-          description: currentServiceContext,
+          description: parsedLine.description || currentServiceContext,
           qty: parsedLine.qty || "1",
           amount: formatAmount(parsedLine.amount),
         });
@@ -1003,7 +1008,7 @@ export function parsePastedInvoiceDetails(rawText, currentInvoice) {
         return;
       }
       const serviceLine = createServiceLine({
-        description: [currentServiceContext, parsedLine.description].filter(Boolean).join(" - "),
+        description: parsedLine.description || currentServiceContext,
         qty: parsedLine.qty || "1",
         amount: formatAmount(parsedLine.amount),
       });
@@ -1023,8 +1028,10 @@ export function parsePastedInvoiceDetails(rawText, currentInvoice) {
     }
 
     if (!parsedLine.amount && pendingLine) {
-      if (isVehicleDetailLine(parsedLine.description)) return;
-      pendingLine.description = `${pendingLine.description} - ${parsedLine.description}`.trim();
+      if (!isVehicleDetailLine(parsedLine.description)) {
+        currentDateGroup.lines.push(createPlainDescriptionLine(parsedLine.description));
+      }
+      pendingLine = null;
       return;
     }
 
@@ -1050,7 +1057,8 @@ export function parsePastedInvoiceDetails(rawText, currentInvoice) {
         return;
       }
 
-      lastCompletedLine.description = `${lastCompletedLine.description} - ${parsedLine.description}`.trim();
+      currentDateGroup.lines.push(createPlainDescriptionLine(parsedLine.description));
+      lastCompletedLine = null;
       return;
     }
 
@@ -1058,7 +1066,7 @@ export function parsePastedInvoiceDetails(rawText, currentInvoice) {
       if (/^vehicle\s*:/i.test(parsedLine.description)) {
         currentDateGroup.lines.push(createPlainDescriptionLine(parsedLine.description));
       } else {
-        currentDateGroup.lines.push(createDescriptionOnlyLine(parsedLine.description));
+        currentDateGroup.lines.push(createPlainDescriptionLine(parsedLine.description));
       }
       pendingLine = null;
       lastCompletedLine = null;

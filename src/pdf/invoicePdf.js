@@ -307,11 +307,13 @@ export function createEmptyInvoiceData() {
 }
 
 export function createServiceLine(values = {}) {
+  const kind = values.kind || (values.isSpacer ? "spacer" : values.isNote ? "note" : "charge");
   return {
     id: values.id || newItemId(),
     description: values.description || "",
     qty: values.qty ?? "",
     amount: values.amount || "",
+    kind,
     isNote: Boolean(values.isNote),
     isRemark: Boolean(values.isRemark),
     isAdjustment: Boolean(values.isAdjustment),
@@ -560,7 +562,7 @@ export function getInvoiceTotal(data) {
 }
 
 function isDescriptionOnlyLine(line) {
-  return Boolean(line.isNote) || Boolean(line.isRemark) || !String(line.amount || "").trim();
+  return line.kind === "note" || Boolean(line.isNote) || Boolean(line.isRemark) || !String(line.amount || "").trim();
 }
 
 function isRemarkLine(line) {
@@ -576,7 +578,7 @@ function isAdjustmentLine(line) {
 }
 
 function isSpacerLine(line) {
-  return Boolean(line.isSpacer);
+  return line.kind === "spacer" || Boolean(line.isSpacer);
 }
 
 export function validateInvoice(data) {
@@ -588,14 +590,6 @@ export function validateInvoice(data) {
   if (!String(invoiceData.invoiceTitle || "").trim()) missing.push("Invoice title");
   if (!String(invoiceData.receiptNumber || "").trim()) missing.push("Document number");
   if (invoiceData.serviceGroups.some((group) => !String(group.heading || "").trim())) missing.push("Service heading");
-  if (
-    !invoiceData.serviceGroups.length ||
-    invoiceData.serviceGroups.some(
-      (group) => !group.dates.length || group.dates.some((dateGroup) => !String(dateGroup.date || "").trim()),
-    )
-  ) {
-    missing.push("Service date");
-  }
   if (
     invoiceData.serviceGroups.some((group) =>
       group.dates.some(
