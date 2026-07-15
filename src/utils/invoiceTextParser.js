@@ -145,7 +145,10 @@ function parseAmountText(value) {
 }
 
 function cleanDescriptionNote(value) {
-  return String(value || "").trim();
+  return String(value || "")
+    .trim()
+    .replace(/^\*{2,}\s*/, "")
+    .trim();
 }
 
 function normalisePlainDescriptionLine(value) {
