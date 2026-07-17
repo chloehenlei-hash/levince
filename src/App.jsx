@@ -663,7 +663,7 @@ export default function App() {
               <button type="button" className="secondary-button danger-button" onClick={clearSqlUploadView}>Clear Completed View</button>
             </div>
           </header>
-          <p className="hint">Paid invoices only upload to SQL after Chloe confirms them. Customers are created automatically by the API before the invoice is uploaded.</p>
+          <p className="hint">Paid invoices only upload to SQL after Chloe confirms them. The API creates the customer, Sales Invoice, and Customer Payment / OR in SQL.</p>
           <section className="sql-command-panel">
             <div className="workflow-stats sql-status-grid">
               <div>
@@ -686,7 +686,7 @@ export default function App() {
               </div>
               {readySqlQueue.length ? <p>Confirmed invoices will upload automatically during the next quiet SQL window.</p> : null}
               {sqlSyncInfo?.uploaded?.length ? (
-                <p>Uploaded: {sqlSyncInfo.uploaded.map((row) => row.invoiceNo).join(", ")}</p>
+                <p>Uploaded: {sqlSyncInfo.uploaded.map((row) => `${row.invoiceNo}${row.sqlPaymentDocNo ? ` / OR ${row.sqlPaymentDocNo}` : ""}`).join(", ")}</p>
               ) : null}
               {sqlSyncInfo?.failed?.length ? (
                 <p>Failed: {sqlSyncInfo.failed.map((row) => `${row.invoiceNo}: ${row.error}`).join(" | ")}</p>
@@ -726,6 +726,7 @@ export default function App() {
                     <th>Date</th>
                     <th>Total</th>
                     <th>Status</th>
+                    <th>OR</th>
                     <th>Error</th>
                   </tr>
                 </thead>
@@ -737,10 +738,11 @@ export default function App() {
                       <td>{displayDate(invoice["Invoice Date"])}</td>
                       <td>{money(invoice.Total, invoice.Currency)}</td>
                       <td><span className={`workflow-status ${statusClass(invoice["SQL Status"])}`}>{invoice["SQL Status"] || "Not Uploaded"}</span></td>
+                      <td>{invoice["SQL Payment Doc No"] || ""}</td>
                       <td>{invoice["SQL API Error"] || ""}</td>
                     </tr>
                   )) : (
-                    <tr><td colSpan="6" className="workflow-empty">No paid invoices waiting for SQL.</td></tr>
+                    <tr><td colSpan="7" className="workflow-empty">No paid invoices waiting for SQL.</td></tr>
                   )}
                 </tbody>
               </table>

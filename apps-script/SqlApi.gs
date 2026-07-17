@@ -35,9 +35,12 @@ function sqlSyncPaidInvoices() {
       const existing = sqlFindDoc_(lookup);
       const api = existing || sqlApiRequest_("POST", "/salesinvoice", sqlInvoicePayload_(inv, allItems, c, s)).data;
       const doc = sqlFindObject_(api) || sqlFindDoc_(lookup) || {};
-      updateInv(inv["Invoice ID"], { Status: "Uploaded to SQL", "SQL Status": "Uploaded to SQL", "Uploaded To SQL At": now(), "Uploaded By": "SQL API", "SQL Doc No": doc.docno || "", "SQL Doc Key": doc.dockey || "", "SQL API Error": "", "Updated At": now() });
-      log(q, "sqlApiUpload", inv["Invoice ID"], inv["Internal Invoice No"], "SQL DocNo: " + (doc.docno || "created"));
-      result.uploaded.push({ invoiceNo: inv["Internal Invoice No"], sqlDocNo: doc.docno || "", sqlDocKey: doc.dockey || "" });
+      if (!doc.dockey) throw new Error("Sales Invoice was created/found, but SQL DocKey is missing.");
+      const pay = sqlEnsureCustomerPayment_(inv, c, doc, s);
+      if (!pay.dockey) throw new Error("Customer Payment was created/found, but SQL Payment DocKey is missing.");
+      updateInv(inv["Invoice ID"], { Status: "Uploaded to SQL", "SQL Status": "Uploaded to SQL", "Uploaded To SQL At": now(), "Uploaded By": "SQL API", "SQL Doc No": doc.docno || "", "SQL Doc Key": doc.dockey || "", "SQL Payment Doc No": pay.docno || "", "SQL Payment Doc Key": pay.dockey || "", "SQL API Error": "", "Updated At": now() });
+      log(q, "sqlApiUpload", inv["Invoice ID"], inv["Internal Invoice No"], "SQL DocNo: " + (doc.docno || "created") + ", OR: " + (pay.docno || "created"));
+      result.uploaded.push({ invoiceNo: inv["Internal Invoice No"], sqlDocNo: doc.docno || "", sqlDocKey: doc.dockey || "", sqlPaymentDocNo: pay.docno || "", sqlPaymentDocKey: pay.dockey || "" });
     } catch (err) {
       updateInv(inv["Invoice ID"], { "SQL API Error": err.message || String(err), "Updated At": now() });
       log(q, "sqlApiError", inv["Invoice ID"], inv["Internal Invoice No"], err.message || String(err));
@@ -46,6 +49,14 @@ function sqlSyncPaidInvoices() {
   });
   result.ok = result.failed.length === 0;
   return result;
+}
+
+function sqlEnsureCustomerPayment_(inv, c, invoiceDoc, s) {
+  const ref = "PAY-" + inv["Internal Invoice No"];
+  const existing = sqlFindDoc_("/customerpayment?docref1=" + encodeURIComponent(ref));
+  if (existing) return existing;
+  const created = sqlApiRequest_("POST", "/customerpayment", sqlPaymentPayload_(inv, c, invoiceDoc, s)).data;
+  return sqlFindObject_(created) || sqlFindDoc_("/customerpayment?docref1=" + encodeURIComponent(ref)) || {};
 }
 
 function sqlEnsureCustomer_(c, s) {
@@ -98,6 +109,34 @@ function sqlDetail_(x, seq, s) {
     disc: x.Discount ? String(x.Discount) : "", tax: x["Tax Code"] || "", taxamt: sqlMoney_(x["Tax Amount"]),
     taxinclusive: false, amount: sqlMoney_(amount), localamount: sqlMoney_(amount),
     account: x["Account Code"] || pick(s, "DEFAULT_ACCOUNT_CODE", "510-000"), printable: true, changed: true };
+}
+
+function sqlPaymentPayload_(inv, c, doc, s) {
+  const date = sqlIsoDate_(inv["Paid At"] || inv["Invoice Date"] || new Date());
+  const invDate = sqlIsoDate_(doc.docdate || inv["Invoice Date"] || date);
+  const dueDate = sqlIsoDate_(doc.duedate || inv["Due Date"] || invDate);
+  const amount = sqlMoney_(doc.docamt || inv.Total);
+  const project = pick(s, "DEFAULT_PROJECT", "----"), agent = pick(s, "DEFAULT_AGENT", "----");
+  const ref = "PAY-" + inv["Internal Invoice No"];
+  return {
+    dockey: 0, docno: "", code: c["SQL Customer Code"], docdate: date, postdate: date, taxdate: date,
+    project: project, paymentproject: project, description: "Payment for " + inv["Internal Invoice No"],
+    agent: agent, area: "", paymentmethod: pick(s, "DEFAULT_PAYMENT_METHOD", ""), journal: pick(s, "DEFAULT_PAYMENT_JOURNAL", ""),
+    chequenumber: inv["Payment Ref"] || "", currencycode: "", currencyrate: "1.00", docamt: amount, localdocamt: amount,
+    bankacc: Number(pick(s, "DEFAULT_PAYMENT_BANK_ACC", 0)) || 0, bankcharge: "0.00",
+    bankchargeaccount: pick(s, "DEFAULT_PAYMENT_BANK_CHARGE_ACCOUNT", ""), unappliedamt: "0.00",
+    fromdoctype: "IV", fromdockey: Number(doc.dockey) || 0, cancelled: false, status: 0, nonrefundable: false,
+    bounceddate: date, updatecount: 0, docref1: ref, docref2: inv["Internal Invoice No"], changed: true,
+    sdsknockoff: [{
+      uniquekey: "", dockey: 0, knockoffdockey: 0, refdockey: Number(doc.dockey) || 0,
+      doctype: "IV", docdate: invDate, postdate: invDate, docno: doc.docno || "",
+      agent: agent, area: "", docamt: amount, originaloutstanding: amount, currencycode: "",
+      currencyrate: "1.00", outstanding: amount, koamt: amount, actuallocalkoamt: amount, localkoamt: amount,
+      kotaxdate: date, gainloss: "0.00", gainlosspostdate: date, localoutstanding: amount,
+      knockoff: true, docnoex: doc.docnoex || "", description: doc.description || "LeVince Chauffeur Service",
+      duedate: dueDate, project: project, updatecount: 0
+    }]
+  };
 }
 
 function sqlFindDoc_(path) {

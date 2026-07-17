@@ -5,9 +5,13 @@
 - Added payment slip attachment to the Invoices page. Desmond can choose a PDF/image slip next to an unpaid invoice before clicking `Mark Paid`.
 - Updated `markPaid` in Apps Script so payment slips are uploaded to a Google Drive folder named `LeVince Payment Slips`; Google Sheet stores only the Drive URL in `Payment Proof URL`.
 - Kept payment slip upload optional for now so a missing slip does not block marking paid.
+- Connected SQL API Customer Payment creation after Sales Invoice creation. `sqlSyncPaidInvoices` now creates/fetches the SQL Sales Invoice, then creates/fetches `/customerpayment` with `sdsknockoff` against that invoice before marking the invoice uploaded.
+- Added Google Sheet result columns `SQL Payment Doc No` and `SQL Payment Doc Key`, appended after existing SQL columns to avoid shifting old sheet data.
+- Added default Settings rows for SQL Customer Payment method, journal, bank account dockey, and bank charge account.
+- Updated SQL Upload UI copy/status so it shows that the API creates Customer, Sales Invoice, and Customer Payment / OR, and the last-run status can display the OR number.
 - Verified Apps Script syntax for `Code.gs`, `SqlApi.gs`, and `Scheduler.gs`.
-- Ran production build successfully; current build assets include `dist/assets/index-DubFf8vN.js`, `dist/assets/index-BeH2PIkz.css`, and `dist/assets/pdf-cfD1Jaxp.js`.
-- Confirmed from SQL Account public REST API documentation that Customer Payment is supported at `/customerpayment`, with add/update/delete/PDF actions and Official Receipt report naming. Full payload mapping still needs the `AR_PM-New.json` sample from the Postman collection before implementation.
+- Ran production build successfully; current build assets include `dist/assets/index-DWdv1lyF.js`, `dist/assets/index-BeH2PIkz.css`, and `dist/assets/pdf-A2kGVCzg.js`.
+- Confirmed from SQL Account's Postman collection that Customer Payment is supported at `/customerpayment`; the create sample uses `sdsknockoff` rows to knock off the Sales Invoice and generate the OR/customer payment record.
 
 ## SQL Upload Page Simplified - 2026-07-15
 
