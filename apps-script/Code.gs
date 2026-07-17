@@ -102,9 +102,28 @@ function updateInv(id, patch) {
 }
 function markPaid(q) {
   const d = q.paymentDate || Utilities.formatDate(now(), Session.getScriptTimeZone(), "yyyy-MM-dd");
-  const inv = updateInv(q.invoiceId, { Status:"Paid","SQL Status":"Not Uploaded","Paid At":d,"Payment Ref":q.paymentRef||"","Payment Proof URL":q.proofUrl||"","Updated At":now() });
-  append(T.pay, PH, {"Payment ID":Utilities.getUuid(),"Invoice ID":q.invoiceId,"Internal Invoice No":inv["Internal Invoice No"],"Amount Paid":inv.Total,"Payment Date":d,"Payment Ref":q.paymentRef||"","Payment Proof URL":q.proofUrl||"","Marked By":user(q),"Created At":now()});
+  const found = findInv(q.invoiceId), current = found.inv, proofUrl = q.proofFile ? savePaymentProof_(q.proofFile, current) : (q.proofUrl || "");
+  const inv = updateInv(q.invoiceId, { Status:"Paid","SQL Status":"Not Uploaded","Paid At":d,"Payment Ref":q.paymentRef||"","Payment Proof URL":proofUrl,"Updated At":now() });
+  append(T.pay, PH, {"Payment ID":Utilities.getUuid(),"Invoice ID":q.invoiceId,"Internal Invoice No":inv["Internal Invoice No"],"Amount Paid":inv.Total,"Payment Date":d,"Payment Ref":q.paymentRef||"","Payment Proof URL":proofUrl,"Marked By":user(q),"Created At":now()});
   log(q, "markPaid", q.invoiceId, inv["Internal Invoice No"], "Paid"); return { ok: true, invoiceNo: inv["Internal Invoice No"] };
+}
+function savePaymentProof_(file, inv) {
+  const raw = String(file.data || "").replace(/^data:[^,]+,/, "");
+  if (!raw) return "";
+  const bytes = Utilities.base64Decode(raw), type = file.type || "application/octet-stream";
+  const ext = String(file.name || "").split(".").pop() || (type.indexOf("pdf") >= 0 ? "pdf" : "jpg");
+  const safeNo = String(inv["Internal Invoice No"] || "invoice").replace(/[^\w.-]+/g, "_");
+  const safeName = String(inv["Customer Name"] || "customer").replace(/[^\w.-]+/g, "_").slice(0, 50);
+  const folder = paymentProofFolder_();
+  const blob = Utilities.newBlob(bytes, type, `${safeNo}_${safeName}_payment-slip.${ext}`);
+  const driveFile = folder.createFile(blob);
+  return driveFile.getUrl();
+}
+function paymentProofFolder_() {
+  const props = PropertiesService.getScriptProperties(), id = props.getProperty("PAYMENT_SLIP_FOLDER_ID");
+  if (id) { try { return DriveApp.getFolderById(id); } catch (_) {} }
+  const folders = DriveApp.getFoldersByName("LeVince Payment Slips"), folder = folders.hasNext() ? folders.next() : DriveApp.createFolder("LeVince Payment Slips");
+  props.setProperty("PAYMENT_SLIP_FOLDER_ID", folder.getId()); return folder;
 }
 function reopenInvoices(q) {
   const nos = (q.invoiceNos || []).map(String), invs = rows(T.inv), ids = {}, phones = q.phones || {};

@@ -1322,6 +1322,49 @@ textarea:focus {
   background: #fff;
 }
 
+.slip-upload-button,
+.slip-link-button {
+  position: relative;
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 13px;
+  background: #fffdf9;
+  color: var(--ink);
+  font-weight: 780;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--button-shadow);
+}
+
+.slip-upload-button:hover,
+.slip-link-button:hover {
+  border-color: #d8c5b8;
+  background: #fff8ef;
+}
+
+.slip-upload-button:active,
+.slip-link-button:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--button-shadow);
+}
+
+.slip-upload-button.has-file {
+  border-color: #9fd6b8;
+  background: #effbf4;
+  color: #237a4b;
+}
+
+.slip-upload-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
 .upload-done-button.is-done {
   border-color: #97d9b7;
   background: #dff5e9;

@@ -1,5 +1,14 @@
 # Worklog
 
+## Payment Slip Upload + SQL Payment Check - 2026-07-17
+
+- Added payment slip attachment to the Invoices page. Desmond can choose a PDF/image slip next to an unpaid invoice before clicking `Mark Paid`.
+- Updated `markPaid` in Apps Script so payment slips are uploaded to a Google Drive folder named `LeVince Payment Slips`; Google Sheet stores only the Drive URL in `Payment Proof URL`.
+- Kept payment slip upload optional for now so a missing slip does not block marking paid.
+- Verified Apps Script syntax for `Code.gs`, `SqlApi.gs`, and `Scheduler.gs`.
+- Ran production build successfully; current build assets include `dist/assets/index-DubFf8vN.js`, `dist/assets/index-BeH2PIkz.css`, and `dist/assets/pdf-cfD1Jaxp.js`.
+- Confirmed from SQL Account public REST API documentation that Customer Payment is supported at `/customerpayment`, with add/update/delete/PDF actions and Official Receipt report naming. Full payload mapping still needs the `AR_PM-New.json` sample from the Postman collection before implementation.
+
 ## SQL Upload Page Simplified - 2026-07-15
 
 - Replaced the old SQL Queue two-step Customer Import / Invoice Import UI with one simpler `SQL Upload` page.

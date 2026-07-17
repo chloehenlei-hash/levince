@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ClipboardList, Database, FilePlus2 } from "lucide-react";
+import { CheckCircle2, ClipboardList, Database, FilePlus2, Paperclip } from "lucide-react";
 import InvoiceGenerator from "./InvoiceGenerator.jsx";
 import { callWorkflowApi } from "./workflowApi.js";
 
@@ -216,6 +216,27 @@ function confirmOverwrite(existing, nextInvoice) {
   );
 }
 
+function fileToProof(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      resolve(null);
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      reject(new Error("Payment slip is too large. Please use a file below 8MB."));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => resolve({
+      name: file.name,
+      type: file.type || "application/octet-stream",
+      data: String(reader.result || ""),
+    });
+    reader.onerror = () => reject(new Error("Unable to read payment slip."));
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function App() {
   const [view, setView] = useState("new");
   const [message, setMessage] = useState("");
@@ -229,6 +250,7 @@ export default function App() {
   const [recentPaidUndo, setRecentPaidUndo] = useState(null);
   const [markingPaidNo, setMarkingPaidNo] = useState("");
   const [reopeningNo, setReopeningNo] = useState("");
+  const [paymentSlipFiles, setPaymentSlipFiles] = useState({});
   const [sqlSyncInfo, setSqlSyncInfo] = useState(null);
 
   const paidQueue = useMemo(
@@ -343,6 +365,7 @@ export default function App() {
   async function markPaid(invoice) {
     const invoiceNo = String(invoice["Internal Invoice No"] || "");
     const paidDate = new Date().toISOString().slice(0, 10);
+    const slipFile = paymentSlipFiles[invoice["Invoice ID"]] || null;
     setMarkingPaidNo(invoiceNo);
     setRecentPaidUndo({ invoiceNo, customerName: invoice["Customer Name"] });
     setInvoices((current) => current.map((row) => (
@@ -350,17 +373,24 @@ export default function App() {
         ? { ...row, Status: "Paid", "SQL Status": "Not Uploaded", "Paid At": paidDate }
         : row
     )));
-    setMessage(`${invoiceNo} is marked Paid. It will turn green here first, then move to SQL Queue.`);
+    setMessage(slipFile ? `${invoiceNo} is marked Paid. Uploading payment slip...` : `${invoiceNo} is marked Paid. No payment slip attached.`);
     try {
+      const proofFile = await fileToProof(slipFile);
       await callWorkflowApi("markPaid", {
         invoiceId: invoice["Invoice ID"],
         paymentDate: paidDate,
         paymentRef: "",
         proofUrl: "",
+        proofFile,
+      });
+      setPaymentSlipFiles((current) => {
+        const next = { ...current };
+        delete next[invoice["Invoice ID"]];
+        return next;
       });
       await loadInvoices();
       setRecentPaidUndo({ invoiceNo, customerName: invoice["Customer Name"] });
-      setMessage(`${invoiceNo} is now Paid. You can undo if this was a mistake.`);
+      setMessage(`${invoiceNo} is now Paid${slipFile ? " and the slip is saved to Google Drive" : ""}. You can undo if this was a mistake.`);
     } catch (error) {
       await loadInvoices();
       setMessage(error.message);
@@ -548,6 +578,7 @@ export default function App() {
                   const isPaid = invoice.Status === "Paid";
                   const isMarking = markingPaidNo === invoiceNo;
                   const isReopening = reopeningNo === invoiceNo;
+                  const slipFile = paymentSlipFiles[invoice["Invoice ID"]];
                   return (
                   <tr key={invoice["Invoice ID"]} className={isPaid ? "workflow-row-paid" : ""}>
                     <td><strong>{invoice["Internal Invoice No"]}</strong></td>
@@ -558,6 +589,25 @@ export default function App() {
                     <td>{displayDate(invoice["Paid At"])}</td>
                     <td>
                       <div className="workflow-row-actions">
+                        {!isPaid ? (
+                          <label className={`slip-upload-button ${slipFile ? "has-file" : ""}`}>
+                            <Paperclip aria-hidden="true" />
+                            <span>{slipFile ? "Slip added" : "Slip"}</span>
+                            <input
+                              type="file"
+                              accept="image/*,.pdf,application/pdf"
+                              onChange={(event) => {
+                                const file = event.target.files?.[0] || null;
+                                setPaymentSlipFiles((current) => ({ ...current, [invoice["Invoice ID"]]: file }));
+                              }}
+                            />
+                          </label>
+                        ) : invoice["Payment Proof URL"] ? (
+                          <a className="secondary-button slip-link-button" href={invoice["Payment Proof URL"]} target="_blank" rel="noreferrer">
+                            <Paperclip aria-hidden="true" />
+                            Slip
+                          </a>
+                        ) : null}
                         <button
                           type="button"
                           className={`secondary-button paid-check-button ${isPaid ? "is-paid" : ""}`}
