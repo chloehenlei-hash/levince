@@ -928,13 +928,16 @@ export default function App() {
       };
       const checkedForm = { ...form, ...patch };
       setDirectForms((current) => ({ ...current, [accountKey]: checkedForm }));
-      markDirectCustomerChecked(accountKey, checkedForm, `SQL customer ready: ${patch.sqlCustomerCode}.`);
+      const readyMessage = data.customerFallback
+        ? `Using fallback SQL customer ${patch.sqlCustomerCode} for ${patch.customerName}. Customer master was not created.`
+        : `SQL customer ready: ${patch.sqlCustomerCode}.`;
+      markDirectCustomerChecked(accountKey, checkedForm, readyMessage);
       updateDirectCustomerSearch(accountKey, {
         query: patch.customerName || patch.sqlCustomerCode || "",
-        message: `SQL customer ready: ${patch.sqlCustomerCode}.`,
+        message: data.customerMessage || readyMessage,
         results: [],
       });
-      setMessage(`SQL customer ready: ${patch.sqlCustomerCode}.`);
+      setMessage(readyMessage);
     } catch (error) {
       clearDirectCustomerCheck(accountKey, error.message);
       updateDirectCustomerSearch(accountKey, { message: error.message, results: [] });
