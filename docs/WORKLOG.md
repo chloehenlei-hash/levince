@@ -6,6 +6,8 @@
 - Sales Invoice POST requests now pass through `sqlInsertDocPayload_`, which removes empty master `docno/dockey` values before insert.
 - Sales Invoice detail rows now use `dtlkey = -1` and `dockey = -1` for insert mode, matching SQL Account API guidance that insert detail rows should omit `dtlkey` or use `-1`.
 - Applied the same Sales Invoice insert wrapper to direct create, scheduled SQL upload, and OR retry invoice creation paths.
+- Follow-up hardening: direct Sales Invoice creation now tries clean insert detail rows first by omitting detail `dockey/dtlkey`, then falls back to `dtlkey = -1`, then a master `dockey = -1` variant if SQL Account still rejects the insert.
+- Each retry checks the same `docref1` before and after POST so a successful-but-erroring SQL response does not create duplicate invoices.
 - Ran Apps Script syntax checks for `apps-script/Code.gs`, `apps-script/SqlApi.gs`, and `apps-script/Scheduler.gs`.
 
 ## Direct SQL Auto Customer Lookup - 2026-07-23
