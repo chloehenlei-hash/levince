@@ -2,6 +2,12 @@
 
 ## Direct SQL Sales Invoice Insert Payload Fix - 2026-07-23
 
+- Split Direct SQL customer handling from invoice creation on both SQL Direct and Vincenology pages.
+- Added `sqlDirectEnsureCustomer` Apps Script action so the website can confirm an existing SQL customer code or create a new SQL customer before invoice creation.
+- Customer cards now show a green ready state after the SQL customer is confirmed; editing customer fields clears that ready state.
+- `Create SQL Invoice` and `Create Customer Payment / OR` are disabled until the customer profile is confirmed.
+- Added `Find Existing` and `Add New Customer` / `Confirm Customer` actions inside the customer profile card.
+- Added backend marker `sql-direct-customer-gate-20260723`.
 - Direct SQL existing-customer fix: when the page already has an SQL Customer Code such as `300-C0001`, direct create now trusts that code and skips `POST /customer`, then proceeds straight to Sales Invoice creation.
 - Added backend marker `sql-direct-existing-code-20260723` for this path.
 - Added backend marker `sql-customer-stage-20260723` and stage-specific direct-create errors so future screenshots identify whether SQL rejects customer creation or Sales Invoice creation.

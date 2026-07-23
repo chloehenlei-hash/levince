@@ -30,6 +30,16 @@ const DIRECT_SQL_ACCOUNTS = {
   },
 };
 const DIRECT_SQL_HISTORY_KEY = "levince-direct-sql-documents-v1";
+const DIRECT_CUSTOMER_FIELDS = new Set([
+  "customerName",
+  "sqlCustomerCode",
+  "customerPhone",
+  "customerEmail",
+  "billingAddress",
+  "tin",
+  "idType",
+  "idNo",
+]);
 
 const MONTH_NAMES = [
   "January",
@@ -407,6 +417,7 @@ export default function App() {
   const [directBusy, setDirectBusy] = useState("");
   const [directResults, setDirectResults] = useState({});
   const [directCustomerSearches, setDirectCustomerSearches] = useState({});
+  const [directCustomerChecks, setDirectCustomerChecks] = useState({});
   const [directDocuments, setDirectDocuments] = useState(loadDirectSqlHistory);
   const [directPasteInputs, setDirectPasteInputs] = useState({});
   const [directPasteStatus, setDirectPasteStatus] = useState({});
@@ -693,6 +704,39 @@ export default function App() {
       ...current,
       [accountKey]: { ...(current[accountKey] || createDirectForm()), ...patch },
     }));
+    if (Object.keys(patch).some((key) => DIRECT_CUSTOMER_FIELDS.has(key))) {
+      setDirectCustomerChecks((current) => ({
+        ...current,
+        [accountKey]: { ok: false, signature: "", message: "Customer changed. Check or add the SQL customer before creating invoice." },
+      }));
+    }
+  }
+
+  function directCustomerSignature(form) {
+    return [
+      form.customerName,
+      form.sqlCustomerCode,
+      form.customerPhone,
+      form.customerEmail,
+      form.billingAddress,
+      form.tin,
+      form.idType,
+      form.idNo,
+    ].map(textValue).join("|");
+  }
+
+  function markDirectCustomerChecked(accountKey, form, message) {
+    setDirectCustomerChecks((current) => ({
+      ...current,
+      [accountKey]: { ok: true, signature: directCustomerSignature(form), message },
+    }));
+  }
+
+  function clearDirectCustomerCheck(accountKey, message = "Customer details need checking before invoice creation.") {
+    setDirectCustomerChecks((current) => ({
+      ...current,
+      [accountKey]: { ok: false, signature: "", message },
+    }));
   }
 
   function updateDirectCustomerSearch(accountKey, patch) {
@@ -719,6 +763,7 @@ export default function App() {
     const parsed = parseInvoiceTextDetails(value, createEmptyInvoiceData());
     const parsedForm = directFormFromParsedInvoice(parsed, directForms[accountKey] || createDirectForm());
     setDirectForms((current) => ({ ...current, [accountKey]: parsedForm }));
+    clearDirectCustomerCheck(accountKey, "Customer details were organised. Check or add the SQL customer before creating invoice.");
     updateDirectCustomerSearch(accountKey, {
       query: parsedForm.customerName || "",
       results: [],
@@ -769,7 +814,7 @@ export default function App() {
       const results = data.customers || [];
       updateDirectCustomerSearch(accountKey, {
         results,
-        message: results.length ? `${results.length} SQL customer(s) found.` : "No SQL customer found.",
+        message: results.length ? `${results.length} SQL customer(s) found.` : "No SQL customer found. Use Add New Customer to create this profile first.",
       });
     } catch (error) {
       updateDirectCustomerSearch(accountKey, { message: error.message, results: [] });
@@ -798,19 +843,19 @@ export default function App() {
         results,
         message: results.length
           ? `${results.length} possible SQL customer(s) found. Choose the correct one before creating.`
-          : "No existing SQL customer found. Create SQL Invoice / OR will create this customer first, then create the invoice.",
+          : "No existing SQL customer found. Add this customer first, then create the invoice.",
       });
     } catch (error) {
       updateDirectCustomerSearch(accountKey, {
         query: searchText,
         results: [],
-        message: `${error.message}. Create will still try to resolve/create the SQL customer first.`,
+        message: `${error.message}. Check or add the SQL customer before creating invoice.`,
       });
     }
   }
 
   function selectSqlCustomer(accountKey, customer, options = {}) {
-    updateDirectForm(accountKey, {
+    const nextForm = {
       customerName: customer.customerName || "",
       sqlCustomerCode: customer.sqlCustomerCode || "",
       customerPhone: customer.customerPhone || "",
@@ -819,12 +864,64 @@ export default function App() {
       tin: customer.tin || "",
       idType: customer.idType || "0",
       idNo: customer.idNo || "",
-    });
+    };
+    updateDirectForm(accountKey, nextForm);
+    markDirectCustomerChecked(accountKey, { ...(directForms[accountKey] || createDirectForm()), ...nextForm }, `SQL customer ready: ${customer.customerName || customer.sqlCustomerCode}.`);
     updateDirectCustomerSearch(accountKey, {
       query: customer.customerName || customer.sqlCustomerCode || "",
       message: options.message || `Selected ${customer.customerName || customer.sqlCustomerCode}.`,
       results: [],
     });
+  }
+
+  async function ensureDirectSqlCustomer(accountKey) {
+    const form = directForms[accountKey] || createDirectForm();
+    if (!textValue(form.customerName)) {
+      setMessage("Customer name is required before checking SQL customer.");
+      return;
+    }
+    setDirectBusy(`${accountKey}:customer-ensure`);
+    updateDirectCustomerSearch(accountKey, { message: "Checking / adding SQL customer...", results: [] });
+    try {
+      const data = await callWorkflowApi("sqlDirectEnsureCustomer", {
+        account: accountKey,
+        customer: {
+          customerName: textValue(form.customerName),
+          sqlCustomerCode: textValue(form.sqlCustomerCode),
+          customerPhone: textValue(form.customerPhone),
+          customerEmail: textValue(form.customerEmail),
+          billingAddress: textValue(form.billingAddress),
+          tin: textValue(form.tin),
+          idType: textValue(form.idType) || "0",
+          idNo: textValue(form.idNo),
+        },
+      });
+      const patch = {
+        customerName: data.customerName || form.customerName,
+        sqlCustomerCode: data.sqlCustomerCode || form.sqlCustomerCode,
+        customerPhone: data.customerPhone || form.customerPhone,
+        customerEmail: data.customerEmail || form.customerEmail,
+        billingAddress: data.billingAddress || form.billingAddress,
+        tin: data.tin || form.tin,
+        idType: data.idType || form.idType || "0",
+        idNo: data.idNo || form.idNo,
+      };
+      const checkedForm = { ...form, ...patch };
+      setDirectForms((current) => ({ ...current, [accountKey]: checkedForm }));
+      markDirectCustomerChecked(accountKey, checkedForm, `SQL customer ready: ${patch.sqlCustomerCode}.`);
+      updateDirectCustomerSearch(accountKey, {
+        query: patch.customerName || patch.sqlCustomerCode || "",
+        message: `SQL customer ready: ${patch.sqlCustomerCode}.`,
+        results: [],
+      });
+      setMessage(`SQL customer ready: ${patch.sqlCustomerCode}.`);
+    } catch (error) {
+      clearDirectCustomerCheck(accountKey, error.message);
+      updateDirectCustomerSearch(accountKey, { message: error.message, results: [] });
+      setMessage(error.message);
+    } finally {
+      setDirectBusy("");
+    }
   }
 
   function directPayload(accountKey) {
@@ -836,6 +933,11 @@ export default function App() {
     }
     if (amount <= 0) {
       setMessage("Amount must be more than RM 0.00 before creating a SQL invoice.");
+      return null;
+    }
+    const check = directCustomerChecks[accountKey];
+    if (!check?.ok || check.signature !== directCustomerSignature(form)) {
+      setMessage("Check or add the SQL customer first. The invoice button will unlock after the customer shows green.");
       return null;
     }
     return {
@@ -1071,8 +1173,11 @@ export default function App() {
     const form = directForms[accountKey] || createDirectForm();
     const result = directResults[accountKey];
     const customerSearch = directCustomerSearches[accountKey] || { query: "", results: [], message: "" };
+    const customerCheck = directCustomerChecks[accountKey];
+    const customerReady = Boolean(customerCheck?.ok && customerCheck.signature === directCustomerSignature(form));
     const testBusy = directBusy === `${accountKey}:test`;
     const searchBusy = directBusy === `${accountKey}:customer-search`;
+    const customerBusy = directBusy === `${accountKey}:customer-ensure`;
     const invoiceBusy = directBusy === `${accountKey}:invoice`;
     const paymentBusy = directBusy === `${accountKey}:payment`;
     const aiPasteBusy = directBusy === `${accountKey}:ai-paste`;
@@ -1162,6 +1267,10 @@ RM190`}
               </button>
             </div>
             {customerSearch.message ? <p className="sql-search-message">{customerSearch.message}</p> : null}
+            <div className={`direct-customer-status ${customerReady ? "is-ready" : ""}`}>
+              {customerReady ? <CheckCircle2 aria-hidden="true" /> : <Search aria-hidden="true" />}
+              <span>{customerReady ? customerCheck.message : customerCheck?.message || "Find an existing SQL customer or add this customer before creating invoice."}</span>
+            </div>
             {customerSearch.results?.length ? (
               <div className="sql-customer-results">
                 {customerSearch.results.map((customer) => (
@@ -1215,6 +1324,16 @@ RM190`}
                 <textarea value={form.billingAddress} rows="3" onChange={(event) => updateDirectForm(accountKey, { billingAddress: event.target.value })} />
               </label>
             </div>
+            <div className="workflow-row-actions direct-customer-actions">
+              <button type="button" className="secondary-button" onClick={() => searchSqlCustomers(accountKey)} disabled={Boolean(directBusy)}>
+                <Search aria-hidden="true" />
+                {searchBusy ? "Searching..." : "Find Existing"}
+              </button>
+              <button type="button" className="primary-button" onClick={() => ensureDirectSqlCustomer(accountKey)} disabled={Boolean(directBusy)}>
+                {customerBusy ? <Loader2 className="spin" aria-hidden="true" /> : <FilePlus2 aria-hidden="true" />}
+                {form.sqlCustomerCode ? "Confirm Customer" : "Add New Customer"}
+              </button>
+            </div>
           </div>
           <div className="workflow-section direct-sql-form">
             <div className="workflow-page-header compact">
@@ -1266,11 +1385,11 @@ RM190`}
               <strong>{money(form.amount || 0, "RM")}</strong>
             </div>
             <div className="workflow-row-actions direct-main-actions">
-              <button type="button" className="primary-button" onClick={() => createDirectSqlInvoice(accountKey)} disabled={Boolean(directBusy)}>
+              <button type="button" className="primary-button" onClick={() => createDirectSqlInvoice(accountKey)} disabled={Boolean(directBusy) || !customerReady}>
                 <ReceiptText aria-hidden="true" />
                 {invoiceBusy ? "Creating..." : "Create SQL Invoice"}
               </button>
-              <button type="button" className="secondary-button" onClick={() => createDirectSqlPayment(accountKey)} disabled={Boolean(directBusy)}>
+              <button type="button" className="secondary-button" onClick={() => createDirectSqlPayment(accountKey)} disabled={Boolean(directBusy) || !customerReady}>
                 <CreditCard aria-hidden="true" />
                 {paymentBusy ? "Creating OR..." : "Create Customer Payment / OR"}
               </button>
