@@ -2,6 +2,8 @@
 
 ## Direct SQL Sales Invoice Insert Payload Fix - 2026-07-23
 
+- Direct SQL existing-customer fix: when the page already has an SQL Customer Code such as `300-C0001`, direct create now trusts that code and skips `POST /customer`, then proceeds straight to Sales Invoice creation.
+- Added backend marker `sql-direct-existing-code-20260723` for this path.
 - Added backend marker `sql-customer-stage-20260723` and stage-specific direct-create errors so future screenshots identify whether SQL rejects customer creation or Sales Invoice creation.
 - Customer creation now tries a branch-only insert payload first, then child-row insert keys, then the raw Postman-style sample payload; this targets the same SQL `MainDataSet` edit/insert-mode error when a new customer must be created before the invoice.
 - Customer payload defaults for `statementtype`, `agingon`, and `status` now match the Postman sample blanks instead of forcing local defaults during direct create.

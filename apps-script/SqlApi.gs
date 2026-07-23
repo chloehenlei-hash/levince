@@ -1,4 +1,4 @@
-const SQL_API_BACKEND_VERSION="sql-customer-stage-20260723";const SQL_API_DEFAULTS={host:"https://api.sql.my",region:"ap-southeast-5",service:"sqlaccount"}
+const SQL_API_BACKEND_VERSION="sql-direct-existing-code-20260723";const SQL_API_DEFAULTS={host:"https://api.sql.my",region:"ap-southeast-5",service:"sqlaccount"}
 ;function sqlApiConfig_(prefix) {prefix=prefix||"";const p=PropertiesService.getScriptProperties();
 return {host:(p.getProperty(prefix+"SQL_API_HOST")||SQL_API_DEFAULTS.host).replace(/\/+$/,""),region:p.getProperty(prefix+"SQL_API_REGION")||SQL_API_DEFAULTS.region,service:p.getProperty(prefix+"SQL_API_SERVICE")||SQL_API_DEFAULTS.service,accessKey:(p.getProperty(prefix+"SQL_API_ACCESS_KEY")||"").trim(),secretKey:(p.getProperty(prefix+"SQL_API_SECRET_KEY")||"").trim()}
 ;} function sqlConnectionStatus() {return sqlConnectionStatusFor_("");} function vincenologySqlConnectionStatus() {return sqlConnectionStatusFor_("VINCENOLOGY_");
@@ -40,7 +40,7 @@ const doc=sqlFindObject_(directInvoiceData)||sqlFindDoc_(lookup,config)||{};if (
 } function sqlDirectFindInvoiceDoc_(q,config) {const tries=[];if (q.sqlDocKey) tries.push("/salesinvoice/"+encodeURIComponent(q.sqlDocKey));if (q.sqlDocNo) tries.push("/salesinvoice?docno="+encodeURIComponent(q.sqlDocNo));if (q.docRef) tries.push("/salesinvoice?docref1="+encodeURIComponent(q.docRef));
 for (let i=0;i<tries.length;i++) {try {const doc=sqlFindDoc_(tries[i],config);if (doc) return doc;} catch (_) {}} return null;
 } function sqlDirectDocSummary_(doc) {return {docRef:doc.docref1||doc.DOCREF1||"",sqlDocNo:doc.docno||doc.DOCNO||"",sqlDocKey:sqlDocKey_(doc),customerName:doc.companyname||doc.COMPANYNAME||"",sqlCustomerCode:sqlCustomerCode_(doc),invoiceDate:doc.docdate||doc.DOCDATE||"",amount:doc.docamt||doc.localdocamt||doc.DOCAMT||0};
-} function sqlDirectResolveCustomer_(c,s,config) {const name=c["Customer Name"],oldCode=String(c["SQL Customer Code"]||"").trim();let found=oldCode?sqlFindCustomerByCode_(oldCode,config):null;
+} function sqlDirectResolveCustomer_(c,s,config) {const name=c["Customer Name"],oldCode=String(c["SQL Customer Code"]||"").trim();if (oldCode) return c;let found=null;
 if (!found) found=sqlFindCustomerByName_(name,config);if (!found) {if (!c["SQL Customer Code"]) c["SQL Customer Code"]=sqlDirectCustomerCode_(s);let created;try {created=sqlCreateCustomer_(c,s,config);} catch (err) {throw new Error("Create customer failed: "+(err.message||String(err)));} found=sqlFindCustomerObject_(created,name,"")||sqlFindCustomerByName_(name,config);}
 const code=sqlCustomerCode_(found);if (!code) throw new Error("Customer was created/found, but SQL did not return a customer code.");c["SQL Customer Code"]=code;return c;
 } function sqlDirectCustomerCode_(s) {const p=pick(s,"DEFAULT_CUSTOMER_CODE_PREFIX","300-C"),u=Utilities.getUuid().replace(/-/g,"").toUpperCase();return (p+u).slice(0,10);
