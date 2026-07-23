@@ -1,5 +1,13 @@
 # Worklog
 
+## Direct SQL Sales Invoice Insert Payload Fix - 2026-07-23
+
+- Fixed the SQL Direct and Vincenology Sales Invoice create payload after SQL Account returned `MainDataSet: Dataset not in edit or insert mode`.
+- Sales Invoice POST requests now pass through `sqlInsertDocPayload_`, which removes empty master `docno/dockey` values before insert.
+- Sales Invoice detail rows now use `dtlkey = -1` and `dockey = -1` for insert mode, matching SQL Account API guidance that insert detail rows should omit `dtlkey` or use `-1`.
+- Applied the same Sales Invoice insert wrapper to direct create, scheduled SQL upload, and OR retry invoice creation paths.
+- Ran Apps Script syntax checks for `apps-script/Code.gs`, `apps-script/SqlApi.gs`, and `apps-script/Scheduler.gs`.
+
 ## Direct SQL Auto Customer Lookup - 2026-07-23
 
 - Direct SQL quick paste now automatically searches the relevant SQL customer database after organising pasted details.

@@ -35,7 +35,7 @@ if (!docKey&&!docNo) throw new Error("SQL invoice DocKey or DocNo is required be
 sqlDeleteAny_([docKey?"/salesinvoice/"+encodeURIComponent(docKey):"",docKey?"/salesinvoice?dockey="+encodeURIComponent(docKey):"",docNo?"/salesinvoice?docno="+encodeURIComponent(docNo):""],c,false);
 log(q,"sqlDirectDeleteInvoice","",q.docRef||docNo,"Deleted SQL invoice "+(docNo||docKey));return {ok:true,deleted:true,sqlDocNo:docNo||"",sqlDocKey:docKey||""};
 } function sqlDirectCreateInvoice_(d,s,config) {const customer=sqlDirectResolveCustomer_(d.customer,s,config),lookup="/salesinvoice?docref1="+encodeURIComponent(d.ref),existing=sqlFindDoc_(lookup,config);
-const api=existing||sqlApiRequest_("POST","/salesinvoice",sqlInvoicePayload_(d.inv,[d.item],customer,s),false,config).data;
+const api=existing||sqlApiRequest_("POST","/salesinvoice",sqlInsertDocPayload_(sqlInvoicePayload_(d.inv,[d.item],customer,s)),false,config).data;
 const doc=sqlFindObject_(api)||sqlFindDoc_(lookup,config)||{};if (!doc.dockey) throw new Error("Sales Invoice was created/found, but SQL DocKey is missing.");return {customer:customer,doc:doc};
 } function sqlDirectFindInvoiceDoc_(q,config) {const tries=[];if (q.sqlDocKey) tries.push("/salesinvoice/"+encodeURIComponent(q.sqlDocKey));if (q.sqlDocNo) tries.push("/salesinvoice?docno="+encodeURIComponent(q.sqlDocNo));if (q.docRef) tries.push("/salesinvoice?docref1="+encodeURIComponent(q.docRef));
 for (let i=0;i<tries.length;i++) {try {const doc=sqlFindDoc_(tries[i],config);if (doc) return doc;} catch (_) {}} return null;
@@ -49,7 +49,7 @@ const invs=rows(T.inv).filter(x=>x.Status==="Paid"&&x["SQL Status"]==="Ready for
 ;invs.forEach(inv=>{try {sqlUploadAmount_(inv);let c=cm[ckey(inv["Customer Name"])];if (!c) throw new Error("Customer record is missing.");
 c=sqlResolveCustomer_(c,s);updateInv(inv["Invoice ID"],{"SQL Customer Code":c["SQL Customer Code"],"Updated At":now()}
 );const lookup="/salesinvoice?docref1="+encodeURIComponent(inv["Internal Invoice No"]);const existing=sqlFindDoc_(lookup);
-const api=existing||sqlApiRequest_("POST","/salesinvoice",sqlInvoicePayload_(inv,allItems,c,s)).data;
+const api=existing||sqlApiRequest_("POST","/salesinvoice",sqlInsertDocPayload_(sqlInvoicePayload_(inv,allItems,c,s))).data;
 const doc=sqlFindObject_(api)||sqlFindDoc_(lookup)||{};if (!doc.dockey) throw new Error("Sales Invoice was created/found, but SQL DocKey is missing.");
 updateInv(inv["Invoice ID"],{"SQL Doc No":doc.docno||"","SQL Doc Key":doc.dockey||"","SQL API Error":"","Updated At":now()}
 );const pay=sqlEnsureCustomerPayment_(inv,c,doc,s);if (!pay.dockey) throw new Error("Customer Payment was created/found, but SQL Payment DocKey is missing.");
@@ -64,7 +64,7 @@ const f=findInv(q.invoiceId),inv=f.inv,s=settings();sqlUploadAmount_(inv);
 const customers=syncCustomers([inv],s);let c=custMap(customers)[ckey(inv["Customer Name"])];
 if (!c) throw new Error("Customer record is missing.");c=sqlResolveCustomer_(c,s);updateInv(inv["Invoice ID"],{"SQL Customer Code":c["SQL Customer Code"],"Updated At":now()}
 );const lookup="/salesinvoice?docref1="+encodeURIComponent(inv["Internal Invoice No"]);const existing=sqlFindDoc_(lookup);
-const api=existing||sqlApiRequest_("POST","/salesinvoice",sqlInvoicePayload_(inv,rows(T.item),c,s)).data;
+const api=existing||sqlApiRequest_("POST","/salesinvoice",sqlInsertDocPayload_(sqlInvoicePayload_(inv,rows(T.item),c,s))).data;
 const doc=sqlFindObject_(api)||sqlFindDoc_(lookup)||{};if (!doc.dockey) throw new Error("Sales Invoice exists, but SQL DocKey is missing.");
 updateInv(inv["Invoice ID"],{"SQL Doc No":doc.docno||"","SQL Doc Key":doc.dockey||"","SQL API Error":"","Updated At":now()}
 );try {const pay=sqlEnsureCustomerPayment_(inv,c,doc,s);if (!pay.dockey) throw new Error("Customer Payment / OR DocKey is missing.");
@@ -102,8 +102,10 @@ return {code:code,controlaccount:pick(s,"DEFAULT_CUSTOMER_CONTROL_ACCOUNT","300-
 const total=sqlUploadAmount_(inv),foreign=!isRmCurrency(inv.Currency),moneyRows=allItems.filter(x=>x["Invoice ID"]===inv["Invoice ID"]&&Number(x.Amount)!==0),single=foreign||moneyRows.some(x=>Number(x.Amount)<0);
 const items=single?[{Description:"LeVince Chauffeur Service - "+inv["Internal Invoice No"],Quantity:1,UOM:pick(s,"DEFAULT_UOM","UNIT"),"Unit Price":total,Amount:total}]:moneyRows;if (!items.length) throw new Error("No money rows are available for SQL upload.");
 return {dockey:0,docno:"",docdate:date,postdate:date,taxdate:date,code:c["SQL Customer Code"],companyname:inv["Customer Name"],address1:a[0]||"",address2:a[1]||"",address3:a[2]||"",address4:a[3]||"",country:pick(s,"DEFAULT_COUNTRY","MY"),phone1:phone(inv["Customer Phone"]),agent:pick(s,"DEFAULT_AGENT","----"),project:pick(s,"DEFAULT_PROJECT","----"),terms:inv.Terms||pick(s,"DEFAULT_TERMS","C.O.D."),currencycode:"",currencyrate:"1.00",description:"LeVince Chauffeur Service",cancelled:false,docamt:sqlMoney_(total),localdocamt:sqlMoney_(total),docref1:String(inv["Internal Invoice No"]),tin:inv.TIN||"",idtype:Number(inv["ID Type"]||0),idno:inv["ID No"]||"",submissiontype:Number(pick(s,"DEFAULT_SUBMISSION_TYPE",17)),changed:true,sdsdocdetail:items.map((x,i)=>sqlDetail_(x,i+1,s))}
-;} function sqlDetail_(x,seq,s) {const amount=Number(x.Amount),qty=Number(x.Quantity)||1;const price=Number(x["Unit Price"]);
-return {dtlkey:0,dockey:0,seq:seq,itemcode:x["Item Code"]||"",location:"",batch:"",project:pick(s,"DEFAULT_PROJECT","----"),description:x.Description||"Service",qty:sqlMoney_(qty),uom:x.UOM||pick(s,"DEFAULT_UOM","UNIT"),unitprice:sqlMoney_(price||amount/qty),disc:x.Discount?String(x.Discount):"",tax:x["Tax Code"]||"",taxamt:sqlMoney_(x["Tax Amount"]),taxinclusive:false,amount:sqlMoney_(amount),localamount:sqlMoney_(amount),account:x["Account Code"]||pick(s,"DEFAULT_ACCOUNT_CODE","510-000"),printable:true,changed:true}
+;} function sqlInsertDocPayload_(payload) {const out=JSON.parse(JSON.stringify(payload||{}));if (!out.docno) delete out.docno;if (out.dockey===0||out.dockey===""||out.dockey==null) delete out.dockey;
+(out.sdsdocdetail||[]).forEach(x=>{if (x.dtlkey==null||x.dtlkey===0||x.dtlkey==="") x.dtlkey=-1;if (x.dockey==null||x.dockey===0||x.dockey==="") x.dockey=-1;});return out;
+} function sqlDetail_(x,seq,s) {const amount=Number(x.Amount),qty=Number(x.Quantity)||1;const price=Number(x["Unit Price"]);
+return {dtlkey:-1,dockey:-1,seq:seq,itemcode:x["Item Code"]||"",location:"",batch:"",project:pick(s,"DEFAULT_PROJECT","----"),description:x.Description||"Service",qty:sqlMoney_(qty),uom:x.UOM||pick(s,"DEFAULT_UOM","UNIT"),unitprice:sqlMoney_(price||amount/qty),disc:x.Discount?String(x.Discount):"",tax:x["Tax Code"]||"",taxamt:sqlMoney_(x["Tax Amount"]),taxinclusive:false,amount:sqlMoney_(amount),localamount:sqlMoney_(amount),account:x["Account Code"]||pick(s,"DEFAULT_ACCOUNT_CODE","510-000"),printable:true,changed:true}
 ;} function sqlPaymentPayload_(inv,c,doc,s) {const date=sqlIsoDate_(inv["Paid At"]||inv["Invoice Date"]||new Date());
 const invDate=sqlIsoDate_(doc.docdate||inv["Invoice Date"]||date);const dueDate=sqlIsoDate_(doc.duedate||inv["Due Date"]||invDate);
 const amount=sqlMoney_(doc.docamt||sqlUploadAmount_(inv));const project=pick(s,"DEFAULT_PROJECT","----"),agent=pick(s,"DEFAULT_AGENT","----");
