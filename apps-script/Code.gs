@@ -65,6 +65,7 @@ function phone(v) {
   if (s[0] === "+") return "+" + d;
   return c.some(x => d.indexOf(x) === 0 && d.length > x.length + 5 && d[0] !== "0") ? "+" + d : s;
 }
+function isRmCurrency(v) { const c = String(v || "RM").trim().toUpperCase(); return !c || c === "RM" || c === "MYR"; }
 function now() { return new Date(); }
 function user(q) { return q.user || "User"; }
 function log(q, action, id, no, detail) {
@@ -143,15 +144,16 @@ function markUploaded(q) {
   log(q, "markUploaded", q.invoiceId, inv["Internal Invoice No"], "Uploaded"); return { ok: true, invoiceNo: inv["Internal Invoice No"] };
 }
 function confirmSqlUpload(q) {
-  const ids = (q.invoiceIds || []).map(String), nos = [];
+  const ids = (q.invoiceIds || []).map(String), nos = [], skipped = [];
   rows(T.inv).forEach(inv => {
     const id = String(inv["Invoice ID"] || "");
     if (ids.indexOf(id) < 0 || inv.Status !== "Paid" || inv["SQL Status"] === "Uploaded to SQL") return;
+    if (!isRmCurrency(inv.Currency)) { skipped.push(inv["Internal Invoice No"]); return; }
     const out = updateInv(id, { "SQL Status":"Ready for SQL","SQL API Error":"","Updated At":now() });
     nos.push(out["Internal Invoice No"]);
   });
-  log(q, "confirmSqlUpload", "", "", `Ready for SQL: ${nos.join(", ")}`);
-  return { ok: true, count: nos.length, invoiceNos: nos };
+  log(q, "confirmSqlUpload", "", "", `Ready for SQL: ${nos.join(", ")}${skipped.length ? "; skipped non-RM: " + skipped.join(", ") : ""}`);
+  return { ok: true, count: nos.length, invoiceNos: nos, skippedNonRm: skipped };
 }
 function markCustomersUploaded(q) {
   const keys = (q.customerKeys || []).map(String), sh = ss().getSheetByName(T.cust), vals = sh.getDataRange().getValues(), h = vals[0], ix = h.indexOf("Customer Key");

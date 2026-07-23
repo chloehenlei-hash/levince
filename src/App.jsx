@@ -51,6 +51,11 @@ function textValue(value) {
   return text === "-" ? "" : text;
 }
 
+function isRmCurrency(value) {
+  const currency = textValue(value || "RM").toUpperCase();
+  return !currency || currency === "RM" || currency === "MYR";
+}
+
 function displayDate(value) {
   const text = String(value || "").trim();
   if (!text) return "-";
@@ -265,6 +270,14 @@ export default function App() {
     () => paidQueue.filter((invoice) => invoice["SQL Status"] !== "Ready for SQL"),
     [paidQueue],
   );
+  const blockedCurrencyQueue = useMemo(
+    () => paidQueue.filter((invoice) => !isRmCurrency(invoice.Currency)),
+    [paidQueue],
+  );
+  const uploadablePendingQueue = useMemo(
+    () => pendingSqlConfirmQueue.filter((invoice) => isRmCurrency(invoice.Currency)),
+    [pendingSqlConfirmQueue],
+  );
   const monthOptions = useMemo(() => {
     const keys = new Set([currentMonthKey()]);
     invoices.forEach((invoice) => {
@@ -283,15 +296,10 @@ export default function App() {
   );
   const sqlWarnings = useMemo(() => {
     const warnings = [];
-    if (pendingSqlConfirmQueue.length) warnings.push(`${pendingSqlConfirmQueue.length} paid invoice(s) need Chloe confirmation before API upload.`);
-    const missingPhone = paidQueue.filter((invoice) => !textValue(invoice["Customer Phone"]));
-    if (missingPhone.length) warnings.push(`${missingPhone.length} paid invoice(s) have no customer phone.`);
-    const foreignCurrency = paidQueue.filter((invoice) => textValue(invoice.Currency) && textValue(invoice.Currency) !== "RM");
-    if (foreignCurrency.length) warnings.push(`${foreignCurrency.length} paid invoice(s) are not RM currency.`);
-    const negativeRows = items.filter((item) => paidQueue.some((invoice) => invoice["Invoice ID"] === item["Invoice ID"]) && parseAmount(item.Amount) < 0);
-    if (negativeRows.length) warnings.push(`${negativeRows.length} SQL item row(s) are negative amount rows.`);
+    if (uploadablePendingQueue.length) warnings.push(`${uploadablePendingQueue.length} paid RM invoice(s) need Chloe confirmation before API upload.`);
+    if (blockedCurrencyQueue.length) warnings.push(`${blockedCurrencyQueue.length} paid invoice(s) are not RM currency, so they will stay out of this API upload.`);
     return warnings;
-  }, [items, paidQueue, pendingSqlConfirmQueue]);
+  }, [blockedCurrencyQueue, uploadablePendingQueue]);
 
   useEffect(() => {
     if (!recentPaidUndo) return undefined;
@@ -431,23 +439,25 @@ export default function App() {
       setMessage("No paid invoices waiting for SQL.");
       return;
     }
-    if (!pendingSqlConfirmQueue.length) {
+    if (!uploadablePendingQueue.length) {
       setMessage(`${readySqlQueue.length} invoice(s) already confirmed for scheduled SQL upload.`);
       return;
     }
-    const count = pendingSqlConfirmQueue.length;
-    if (!window.confirm(`Confirm ${count} paid invoice(s) for scheduled SQL API upload?`)) return;
+    const count = uploadablePendingQueue.length;
+    const skipped = blockedCurrencyQueue.length ? `\n\n${blockedCurrencyQueue.length} non-RM invoice(s) will be skipped for now.` : "";
+    if (!window.confirm(`Confirm ${count} paid RM invoice(s) for scheduled SQL API upload?${skipped}`)) return;
     try {
       setInvoices((current) => current.map((invoice) => (
-        pendingSqlConfirmQueue.some((row) => row["Invoice ID"] === invoice["Invoice ID"])
+        uploadablePendingQueue.some((row) => row["Invoice ID"] === invoice["Invoice ID"])
           ? { ...invoice, "SQL Status": "Ready for SQL", "SQL API Error": "" }
           : invoice
       )));
       const data = await callWorkflowApi("confirmSqlUpload", {
-        invoiceIds: pendingSqlConfirmQueue.map((invoice) => invoice["Invoice ID"]),
+        invoiceIds: uploadablePendingQueue.map((invoice) => invoice["Invoice ID"]),
       });
       await loadInvoices();
-      setMessage(`${data.count || 0} invoice(s) confirmed. Waiting for ${nextSqlRunLabel()} SQL API upload.`);
+      const skipText = blockedCurrencyQueue.length ? ` ${blockedCurrencyQueue.length} non-RM invoice(s) were left untouched.` : "";
+      setMessage(`${data.count || 0} invoice(s) confirmed. Waiting for ${nextSqlRunLabel()} SQL API upload.${skipText}`);
     } catch (error) {
       await loadInvoices();
       setMessage(error.message);
@@ -668,7 +678,7 @@ export default function App() {
             <div className="workflow-stats sql-status-grid">
               <div>
                 <span>Need confirm</span>
-                <strong>{pendingSqlConfirmQueue.length}</strong>
+                <strong>{uploadablePendingQueue.length}</strong>
               </div>
               <div>
                 <span>Waiting upload</span>
@@ -682,7 +692,7 @@ export default function App() {
             <div className={`sql-sync-card ${sqlSyncInfo?.failed?.length ? "is-error" : "is-ok"}`}>
               <div>
                 <span>Current status</span>
-                <strong>{sqlStatusText(sqlSyncInfo, pendingSqlConfirmQueue.length, readySqlQueue.length)}</strong>
+                <strong>{sqlStatusText(sqlSyncInfo, uploadablePendingQueue.length, readySqlQueue.length)}</strong>
               </div>
               {readySqlQueue.length ? <p>Confirmed invoices will upload automatically during the next quiet SQL window.</p> : null}
               {sqlSyncInfo?.uploaded?.length ? (
@@ -695,12 +705,12 @@ export default function App() {
             <div className="workflow-row-actions sql-main-actions">
               <button
                 type="button"
-                className={`primary-button ${!pendingSqlConfirmQueue.length && readySqlQueue.length ? "is-copied" : ""}`}
+                className={`primary-button ${!uploadablePendingQueue.length && readySqlQueue.length ? "is-copied" : ""}`}
                 onClick={confirmScheduledUpload}
-                disabled={!pendingSqlConfirmQueue.length}
+                disabled={!uploadablePendingQueue.length}
               >
                 <CheckCircle2 aria-hidden="true" />
-                {!pendingSqlConfirmQueue.length && readySqlQueue.length ? "Waiting for API" : "Confirm Upload"}
+                {!uploadablePendingQueue.length && readySqlQueue.length ? "Waiting for API" : "Confirm Upload"}
               </button>
               <button type="button" className="secondary-button" onClick={loadSqlSyncStatus}>Refresh Status</button>
             </div>

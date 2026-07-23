@@ -1,5 +1,13 @@
 # Worklog
 
+## SQL Upload RM-Only Confirmation Rule - 2026-07-23
+
+- Simplified SQL Upload warnings so missing customer phone and negative invoice rows no longer block or distract Chloe.
+- `Confirm Upload` now only confirms paid invoices with RM/MYR currency. Non-RM paid invoices stay out of the scheduled SQL API upload for now.
+- Added the same RM/MYR guard in `apps-script/Code.gs` `confirmSqlUpload`, so live backend will skip foreign-currency invoices even if they are accidentally passed from the website.
+- Ran Apps Script syntax checks for `Code.gs`, `SqlApi.gs`, and `Scheduler.gs`.
+- Ran production build successfully; current generated assets include `dist/assets/index-DY2TjKIC.js` and `dist/assets/pdf-DD-NTFMn.js`.
+
 ## Payment Slip Upload + SQL Payment Check - 2026-07-17
 
 - Added payment slip attachment to the Invoices page. Desmond can choose a PDF/image slip next to an unpaid invoice before clicking `Mark Paid`.
