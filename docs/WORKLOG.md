@@ -10,6 +10,8 @@
 - Added customer-create fallback variants after SQL Account rejected `POST /customer` with `MainDataSet: Dataset not in edit or insert mode`.
 - Customer creation now tries flat master-only payloads, blank-code Postman-style payloads, child-row changed payloads, previous variants, and a final PUT-by-code fallback; after every failed POST it searches again by customer name in case SQL created the record but returned 500.
 - Added backend marker `sql-direct-customer-insert-20260723`.
+- Added a more literal `postmanExact` customer-create payload using the Postman sample's `attachments`, `note`, and bank `giro` placeholder fields, and added the Postman-style `User-Agent` header to SQL API requests.
+- Added backend marker `sql-direct-customer-postman-20260723`.
 - Split Direct SQL customer handling from invoice creation on both SQL Direct and Vincenology pages.
 - Added `sqlDirectEnsureCustomer` Apps Script action so the website can confirm an existing SQL customer code or create a new SQL customer before invoice creation.
 - Customer cards now show a green ready state after the SQL customer is confirmed; editing customer fields clears that ready state.
