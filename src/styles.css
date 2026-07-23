@@ -1707,6 +1707,69 @@ textarea:focus {
   word-break: break-word;
 }
 
+.direct-document-panel {
+  margin-top: 18px;
+}
+
+.direct-document-list {
+  display: grid;
+  gap: 10px;
+}
+
+.direct-document-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.9fr) minmax(170px, 1.2fr) minmax(105px, 0.8fr) minmax(90px, 0.7fr) minmax(115px, 0.8fr) minmax(120px, 0.9fr) auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--soft-line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fffaf6;
+}
+
+.direct-document-row > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.direct-document-row span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.direct-document-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.88rem;
+}
+
+.direct-document-actions {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.direct-document-actions .secondary-button {
+  min-height: 38px;
+  white-space: nowrap;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 @media (max-width: 900px) {
   .workflow-connection,
   .workflow-stats,
@@ -1723,6 +1786,16 @@ textarea:focus {
 
   .financial-hero-panel {
     grid-template-columns: 1fr;
+  }
+
+  .direct-document-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .direct-document-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 }
 

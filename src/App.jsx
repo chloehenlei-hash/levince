@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Building2, CheckCircle2, ClipboardList, CreditCard, Database, FilePlus2, Paperclip, ReceiptText, Search } from "lucide-react";
+import { Building2, CheckCircle2, ClipboardList, CreditCard, Database, Download, FilePlus2, Paperclip, ReceiptText, RefreshCw, Search, Trash2 } from "lucide-react";
 import InvoiceGenerator from "./InvoiceGenerator.jsx";
 import { callWorkflowApi } from "./workflowApi.js";
 
@@ -27,6 +27,7 @@ const DIRECT_SQL_ACCOUNTS = {
     apiAction: "vincenologySqlConnectionStatus",
   },
 };
+const DIRECT_SQL_HISTORY_KEY = "levince-direct-sql-documents-v1";
 
 const MONTH_NAMES = [
   "January",
@@ -77,6 +78,26 @@ function parseAmount(value) {
 function textValue(value) {
   const text = String(value || "").trim();
   return text === "-" ? "" : text;
+}
+
+function loadDirectSqlHistory() {
+  try {
+    return JSON.parse(window.localStorage.getItem(DIRECT_SQL_HISTORY_KEY) || "{}");
+  } catch (_) {
+    return {};
+  }
+}
+
+function saveDirectSqlHistory(history) {
+  try {
+    window.localStorage.setItem(DIRECT_SQL_HISTORY_KEY, JSON.stringify(history));
+  } catch (_) {
+    // Local history is a convenience only; SQL remains the source of truth.
+  }
+}
+
+function directDocumentKey(doc) {
+  return [doc.account, doc.sqlDocKey, doc.sqlDocNo, doc.docRef].filter(Boolean).join("|");
 }
 
 function isRmCurrency(value) {
@@ -317,6 +338,7 @@ export default function App() {
   const [directBusy, setDirectBusy] = useState("");
   const [directResults, setDirectResults] = useState({});
   const [directCustomerSearches, setDirectCustomerSearches] = useState({});
+  const [directDocuments, setDirectDocuments] = useState(loadDirectSqlHistory);
 
   const paidQueue = useMemo(
     () => invoices.filter((invoice) => invoice.Status === "Paid" && invoice["SQL Status"] !== "Uploaded to SQL"),
@@ -374,6 +396,10 @@ export default function App() {
   useEffect(() => {
     loadInvoices();
   }, []);
+
+  useEffect(() => {
+    saveDirectSqlHistory(directDocuments);
+  }, [directDocuments]);
 
   useEffect(() => {
     const validIds = uploadablePendingQueue.map((invoice) => String(invoice["Invoice ID"]));
@@ -724,6 +750,7 @@ export default function App() {
         },
       }));
       updateDirectForm(accountKey, { docRef: data.docRef || payload.docRef });
+      addDirectDocument(accountKey, data, payload, "invoice");
       setMessage(`SQL invoice created${data.sqlDocNo ? `: ${data.sqlDocNo}` : ""}.`);
     } catch (error) {
       setDirectResults((current) => ({
@@ -751,6 +778,7 @@ export default function App() {
           data,
         },
       }));
+      addDirectDocument(accountKey, data, payload, "payment");
       setMessage(`Customer Payment / OR created${data.sqlPaymentDocNo ? `: ${data.sqlPaymentDocNo}` : ""}.`);
     } catch (error) {
       setDirectResults((current) => ({
@@ -768,6 +796,120 @@ export default function App() {
     setDirectResults((current) => ({ ...current, [accountKey]: null }));
   }
 
+  function addDirectDocument(accountKey, data, payload, source) {
+    const doc = {
+      account: accountKey,
+      source,
+      docRef: data.docRef || payload.docRef,
+      customerName: payload.customer.customerName,
+      amount: payload.invoice.amount,
+      invoiceDate: payload.invoice.invoiceDate,
+      sqlCustomerCode: data.sqlCustomerCode || payload.customer.sqlCustomerCode || "",
+      sqlDocNo: data.sqlDocNo || "",
+      sqlDocKey: data.sqlDocKey || "",
+      sqlPaymentDocNo: data.sqlPaymentDocNo || "",
+      sqlPaymentDocKey: data.sqlPaymentDocKey || "",
+      createdAt: new Date().toISOString(),
+    };
+    setDirectDocuments((current) => {
+      const list = current[accountKey] || [];
+      const key = directDocumentKey(doc);
+      const next = [doc, ...list.filter((item) => directDocumentKey(item) !== key)].slice(0, 30);
+      return { ...current, [accountKey]: next };
+    });
+  }
+
+  async function refreshDirectDocument(accountKey, doc) {
+    setDirectBusy(`${accountKey}:refresh:${directDocumentKey(doc)}`);
+    setMessage(`Checking SQL invoice ${doc.sqlDocNo || doc.docRef}...`);
+    try {
+      const data = await callWorkflowApi("sqlDirectListDocuments", {
+        account: accountKey,
+        docRef: doc.docRef,
+        sqlDocNo: doc.sqlDocNo,
+        sqlDocKey: doc.sqlDocKey,
+      });
+      const found = (data.documents || [])[0];
+      if (!found) {
+        setMessage(`No SQL invoice found for ${doc.sqlDocNo || doc.docRef}.`);
+        return;
+      }
+      addDirectDocument(accountKey, {
+        docRef: found.docRef || doc.docRef,
+        sqlCustomerCode: found.sqlCustomerCode || doc.sqlCustomerCode,
+        sqlDocNo: found.sqlDocNo || doc.sqlDocNo,
+        sqlDocKey: found.sqlDocKey || doc.sqlDocKey,
+        sqlPaymentDocNo: doc.sqlPaymentDocNo,
+        sqlPaymentDocKey: doc.sqlPaymentDocKey,
+      }, {
+        docRef: found.docRef || doc.docRef,
+        customer: { customerName: found.customerName || doc.customerName, sqlCustomerCode: found.sqlCustomerCode || doc.sqlCustomerCode },
+        invoice: { amount: found.amount || doc.amount, invoiceDate: found.invoiceDate || doc.invoiceDate },
+      }, doc.source || "refresh");
+      setMessage(`SQL invoice found: ${found.sqlDocNo || doc.sqlDocNo}.`);
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setDirectBusy("");
+    }
+  }
+
+  async function downloadDirectPdf(accountKey, doc) {
+    setDirectBusy(`${accountKey}:pdf:${directDocumentKey(doc)}`);
+    setMessage(`Preparing PDF for ${doc.sqlDocNo || doc.docRef}...`);
+    try {
+      const data = await callWorkflowApi("sqlDirectGetInvoicePdf", {
+        account: accountKey,
+        docRef: doc.docRef,
+        sqlDocNo: doc.sqlDocNo,
+        sqlDocKey: doc.sqlDocKey,
+      });
+      const binary = atob(data.base64 || "");
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: data.mimeType || "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = data.filename || `SQL Invoice ${doc.sqlDocNo || doc.docRef}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+      setMessage(`PDF downloaded for ${doc.sqlDocNo || doc.docRef}.`);
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setDirectBusy("");
+    }
+  }
+
+  async function deleteDirectDocument(accountKey, doc) {
+    const label = doc.sqlDocNo || doc.docRef;
+    if (!window.confirm(`Delete SQL invoice ${label} from SQL? This cannot be undone from the website.`)) return;
+    setDirectBusy(`${accountKey}:delete:${directDocumentKey(doc)}`);
+    setMessage(`Deleting SQL invoice ${label}...`);
+    try {
+      await callWorkflowApi("sqlDirectDeleteInvoice", {
+        account: accountKey,
+        docRef: doc.docRef,
+        sqlDocNo: doc.sqlDocNo,
+        sqlDocKey: doc.sqlDocKey,
+        sqlPaymentDocNo: doc.sqlPaymentDocNo,
+        sqlPaymentDocKey: doc.sqlPaymentDocKey,
+      });
+      setDirectDocuments((current) => ({
+        ...current,
+        [accountKey]: (current[accountKey] || []).filter((item) => directDocumentKey(item) !== directDocumentKey(doc)),
+      }));
+      setMessage(`Deleted SQL invoice ${label}.`);
+    } catch (error) {
+      setMessage(`Delete failed for ${label}: ${error.message}`);
+    } finally {
+      setDirectBusy("");
+    }
+  }
+
   function renderDirectSqlPage(accountKey) {
     const config = DIRECT_SQL_ACCOUNTS[accountKey];
     const form = directForms[accountKey] || createDirectForm();
@@ -777,6 +919,7 @@ export default function App() {
     const searchBusy = directBusy === `${accountKey}:customer-search`;
     const invoiceBusy = directBusy === `${accountKey}:invoice`;
     const paymentBusy = directBusy === `${accountKey}:payment`;
+    const documents = directDocuments[accountKey] || [];
     return (
       <main className="app-shell workflow-page direct-sql-page">
         <header className="workflow-page-header">
@@ -959,6 +1102,71 @@ export default function App() {
               </div>
             )}
           </aside>
+        </section>
+        <section className="workflow-section direct-document-panel">
+          <div className="workflow-page-header compact">
+            <div>
+              <p className="brand-label">Created SQL documents</p>
+              <h2>Invoices created from this page</h2>
+            </div>
+          </div>
+          {documents.length ? (
+            <div className="direct-document-list">
+              {documents.map((doc) => {
+                const key = directDocumentKey(doc);
+                const refreshBusy = directBusy === `${accountKey}:refresh:${key}`;
+                const pdfBusy = directBusy === `${accountKey}:pdf:${key}`;
+                const deleteBusy = directBusy === `${accountKey}:delete:${key}`;
+                return (
+                  <article className="direct-document-row" key={key}>
+                    <div>
+                      <span>Reference</span>
+                      <strong>{doc.docRef || "-"}</strong>
+                    </div>
+                    <div>
+                      <span>Customer</span>
+                      <strong>{doc.customerName || "-"}</strong>
+                    </div>
+                    <div>
+                      <span>SQL Invoice</span>
+                      <strong>{doc.sqlDocNo || "-"}</strong>
+                    </div>
+                    <div>
+                      <span>OR</span>
+                      <strong>{doc.sqlPaymentDocNo || "-"}</strong>
+                    </div>
+                    <div>
+                      <span>Amount</span>
+                      <strong>{money(doc.amount || 0, "RM")}</strong>
+                    </div>
+                    <div>
+                      <span>Created</span>
+                      <strong>{displayDateTime(doc.createdAt)}</strong>
+                    </div>
+                    <div className="direct-document-actions">
+                      <button type="button" className="icon-button" title="Refresh from SQL" onClick={() => refreshDirectDocument(accountKey, doc)} disabled={Boolean(directBusy)}>
+                        <RefreshCw aria-hidden="true" />
+                        <span className="sr-only">{refreshBusy ? "Refreshing" : "Refresh"}</span>
+                      </button>
+                      <button type="button" className="secondary-button" onClick={() => downloadDirectPdf(accountKey, doc)} disabled={Boolean(directBusy)}>
+                        <Download aria-hidden="true" />
+                        {pdfBusy ? "Preparing..." : "PDF"}
+                      </button>
+                      <button type="button" className="secondary-button danger-button" onClick={() => deleteDirectDocument(accountKey, doc)} disabled={Boolean(directBusy)}>
+                        <Trash2 aria-hidden="true" />
+                        {deleteBusy ? "Deleting..." : "Delete"}
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <strong>No SQL document here yet.</strong>
+              <span>Create a SQL Invoice or Customer Payment / OR and it will appear here automatically.</span>
+            </div>
+          )}
         </section>
       </main>
     );

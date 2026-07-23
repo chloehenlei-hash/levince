@@ -1,5 +1,19 @@
 # Worklog
 
+## Direct SQL Created Document Controls - 2026-07-23
+
+- Added a `Created SQL documents` panel under both `SQL Direct` and `Vincenology SDN BHD`.
+- Successful direct SQL invoice/payment actions now add a row immediately with reference, customer, SQL invoice no, OR no, amount, and created time.
+- The created-document list is saved in browser local storage so Chloe can still see recent direct entries after refreshing the page.
+- Added frontend actions to refresh one direct SQL invoice from SQL, download its SQL invoice PDF, and delete it from SQL.
+- Added Apps Script actions `sqlDirectListDocuments`, `sqlDirectGetInvoicePdf`, and `sqlDirectDeleteInvoice`.
+- Delete attempts to remove the linked Customer Payment / OR first when an OR key/no is available, then deletes the Sales Invoice.
+- PDF download uses Apps Script as the secure bridge so SQL API credentials stay in Script Properties; Apps Script returns the PDF as base64 for the browser download.
+- Important live status: Chloe still needs to redeploy the existing Apps Script Web App after copying the latest `Code.gs` and `SqlApi.gs`; otherwise the live site will keep showing `Unknown action`.
+- Ran production build successfully. Current generated assets include `dist/assets/index-DxhO1pqr.js`, `dist/assets/index-BjtzwDs3.css`, and `dist/assets/pdf-mF6yITrE.js`.
+- Ran Apps Script syntax checks for `apps-script/Code.gs`, `apps-script/SqlApi.gs`, and `apps-script/Scheduler.gs`; the paste-safe GitHub version has `Code.gs` at 116 lines and `SqlApi.gs` at 147 lines.
+- Ran local Playwright smoke checks against `http://localhost:5173/`; the Vincenology page shows the created-document list and PDF/Delete controls with no desktop or mobile horizontal overflow.
+
 ## Direct SQL Invoice Pages - 2026-07-23
 
 - Added a new website navigation page `SQL Direct` for the first LeVince SQL API account.

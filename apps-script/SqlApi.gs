@@ -24,9 +24,22 @@ log(q,"sqlDirectCreateInvoice","",d.ref,"SQL DocNo: "+(out.doc.docno||"created")
 } function sqlDirectCreatePayment(q) {const c=sqlApiConfig_(sqlDirectPrefix_(q)),s=settings(),d=sqlDirectInput_(q),out=sqlDirectCreateInvoice_(d,s,c),pay=sqlEnsureCustomerPayment_(d.inv,out.customer,out.doc,s,c);
 if (!pay.dockey) throw new Error("Customer Payment / OR DocKey is missing.");log(q,"sqlDirectCreatePayment","",d.ref,"OR: "+(pay.docno||"created"));
 return {ok:true,docRef:d.ref,sqlCustomerCode:out.customer["SQL Customer Code"],sqlDocNo:out.doc.docno||"",sqlDocKey:out.doc.dockey||"",sqlPaymentDocNo:pay.docno||"",sqlPaymentDocKey:pay.dockey||""};
+} function sqlDirectListDocuments(q) {const c=sqlApiConfig_(sqlDirectPrefix_(q)),doc=sqlDirectFindInvoiceDoc_(q,c);return {ok:true,documents:doc?[sqlDirectDocSummary_(doc)]:[]};
+} function sqlDirectGetInvoicePdf(q) {const c=sqlApiConfig_(sqlDirectPrefix_(q)),doc=sqlDirectFindInvoiceDoc_(q,c),key=doc&&sqlDocKey_(doc);if (!key) throw new Error("SQL invoice DocKey is required before PDF download.");
+const paths=["/salesinvoice/pdf/"+encodeURIComponent(key),"/salesinvoice/"+encodeURIComponent(key)+"/pdf","/salesinvoice/"+encodeURIComponent(key)+".pdf","/salesinvoice?dockey="+encodeURIComponent(key)+"&format=pdf"];let last="";
+for (let i=0;i<paths.length;i++) {try {const r=sqlApiRawRequest_("GET",paths[i],null,true,c),bytes=r.blob.getBytes(),type=String(r.headers["Content-Type"]||r.headers["content-type"]||"application/pdf");if (bytes.length&&(/pdf/i.test(type)||(bytes[0]===37&&bytes[1]===80&&bytes[2]===68&&bytes[3]===70))) return {ok:true,filename:"SQL Invoice "+(doc.docno||q.docRef||key)+".pdf",mimeType:"application/pdf",base64:Utilities.base64Encode(bytes)};last="PDF endpoint returned "+type;} catch (err) {last=err.message||String(err);}}
+throw new Error("Unable to download SQL invoice PDF. "+last);
+} function sqlDirectDeleteInvoice(q) {const c=sqlApiConfig_(sqlDirectPrefix_(q)),doc=sqlDirectFindInvoiceDoc_(q,c),payKey=String(q.sqlPaymentDocKey||"").trim(),payNo=String(q.sqlPaymentDocNo||"").trim(),docKey=doc&&sqlDocKey_(doc),docNo=doc&&(doc.docno||doc.DOCNO||q.sqlDocNo);
+if (payKey||payNo) sqlDeleteAny_([payKey?"/customerpayment/"+encodeURIComponent(payKey):"",payKey?"/customerpayment?dockey="+encodeURIComponent(payKey):"",payNo?"/customerpayment?docno="+encodeURIComponent(payNo):""],c,true);
+if (!docKey&&!docNo) throw new Error("SQL invoice DocKey or DocNo is required before delete.");
+sqlDeleteAny_([docKey?"/salesinvoice/"+encodeURIComponent(docKey):"",docKey?"/salesinvoice?dockey="+encodeURIComponent(docKey):"",docNo?"/salesinvoice?docno="+encodeURIComponent(docNo):""],c,false);
+log(q,"sqlDirectDeleteInvoice","",q.docRef||docNo,"Deleted SQL invoice "+(docNo||docKey));return {ok:true,deleted:true,sqlDocNo:docNo||"",sqlDocKey:docKey||""};
 } function sqlDirectCreateInvoice_(d,s,config) {const customer=sqlDirectResolveCustomer_(d.customer,s,config),lookup="/salesinvoice?docref1="+encodeURIComponent(d.ref),existing=sqlFindDoc_(lookup,config);
 const api=existing||sqlApiRequest_("POST","/salesinvoice",sqlInvoicePayload_(d.inv,[d.item],customer,s),false,config).data;
 const doc=sqlFindObject_(api)||sqlFindDoc_(lookup,config)||{};if (!doc.dockey) throw new Error("Sales Invoice was created/found, but SQL DocKey is missing.");return {customer:customer,doc:doc};
+} function sqlDirectFindInvoiceDoc_(q,config) {const tries=[];if (q.sqlDocKey) tries.push("/salesinvoice/"+encodeURIComponent(q.sqlDocKey));if (q.sqlDocNo) tries.push("/salesinvoice?docno="+encodeURIComponent(q.sqlDocNo));if (q.docRef) tries.push("/salesinvoice?docref1="+encodeURIComponent(q.docRef));
+for (let i=0;i<tries.length;i++) {try {const doc=sqlFindDoc_(tries[i],config);if (doc) return doc;} catch (_) {}} return null;
+} function sqlDirectDocSummary_(doc) {return {docRef:doc.docref1||doc.DOCREF1||"",sqlDocNo:doc.docno||doc.DOCNO||"",sqlDocKey:sqlDocKey_(doc),customerName:doc.companyname||doc.COMPANYNAME||"",sqlCustomerCode:sqlCustomerCode_(doc),invoiceDate:doc.docdate||doc.DOCDATE||"",amount:doc.docamt||doc.localdocamt||doc.DOCAMT||0};
 } function sqlDirectResolveCustomer_(c,s,config) {const name=c["Customer Name"],oldCode=String(c["SQL Customer Code"]||"").trim();let found=oldCode?sqlFindCustomerByCode_(oldCode,config):null;
 if (!found) found=sqlFindCustomerByName_(name,config);if (!found) {if (!c["SQL Customer Code"]) c["SQL Customer Code"]=sqlDirectCustomerCode_(s);const created=sqlApiRequest_("POST","/customer",sqlCustomerPayload_(c,s),false,config).data;found=sqlFindCustomerObject_(created,name,"")||sqlFindCustomerByName_(name,config);}
 const code=sqlCustomerCode_(found);if (!code) throw new Error("Customer was created/found, but SQL did not return a customer code.");c["SQL Customer Code"]=code;return c;
@@ -64,6 +77,8 @@ throw err;}} function sqlEnsureCustomerPayment_(inv,c,invoiceDoc,s,config) {cons
 const existing=sqlFindDoc_("/customerpayment?docref1="+encodeURIComponent(ref),config);if (existing) return existing;
 const created=sqlApiRequest_("POST","/customerpayment",sqlPaymentPayload_(inv,c,invoiceDoc,s),false,config).data;
 return sqlFindObject_(created)||sqlFindDoc_("/customerpayment?docref1="+encodeURIComponent(ref),config)||{}
+;} function sqlDeleteAny_(paths,config,optional) {let last="";for (let i=0;i<paths.length;i++) {if (!paths[i]) continue;try {const r=sqlApiRequest_("DELETE",paths[i],null,true,config);if (r.status>=200&&r.status<300) return true;last="SQL API "+r.status;} catch (err) {last=err.message||String(err);}}
+if (optional) return false;throw new Error("Unable to delete SQL document. "+last);
 ;} function sqlResolveCustomer_(c,s,config) {let found=null;const oldCode=String(c["SQL Customer Code"]||"").trim(),name=c["Customer Name"];
 if (oldCode) found=sqlFindCustomerByCode_(oldCode,config);if (!found) found=sqlFindCustomerByName_(name,config);
 if (!found) {const created=sqlApiRequest_("POST","/customer",sqlCustomerPayload_(c,s),false,config).data;
@@ -100,6 +115,7 @@ for (let i=0;i<values.length;i++) {const x=sqlFindObject_(values[i]);if (x) retu
 } function sqlFlattenObjects_(v,out) {out=out||[];if (!v||typeof v!=="object") return out;if (!Array.isArray(v)) out.push(v);
 const values=Array.isArray(v)?v:Object.keys(v).map(k=>v[k]);values.forEach(x=>sqlFlattenObjects_(x,out));
 return out;} function sqlCustomerCode_(v) {if (!v||typeof v!=="object") return "";return String(v.code||v.Code||v.CODE||v.customerCode||v.CustomerCode||v["CODE(10)"]||"").trim();
+} function sqlDocKey_(v) {if (!v||typeof v!=="object") return "";return String(v.dockey||v.DocKey||v.DOCKEY||v.docKey||v["DOCKEY"]||"").trim();
 } function sqlNorm_(v) {return String(v||"").trim().replace(/\s+/g," ").toUpperCase();} function sqlApiRequest_(method,path,body,allow404,config) {const c=config||sqlApiConfig_();
 if (!c.accessKey||!c.secretKey) throw new Error("SQL API keys are not configured in Script Properties.");
 const url=c.host+path,payload=body==null?"":JSON.stringify(body);const headers=sqlSign_(method,url,payload,c);
@@ -107,7 +123,11 @@ const options={method:method.toLowerCase(),headers:headers,muteHttpExceptions:tr
 options.payload=payload;} const res=UrlFetchApp.fetch(url,options),status=res.getResponseCode(),text=res.getContentText();
 let data=text;try {data=text?JSON.parse(text):{};} catch (_) {} if (status<200||status>=300) {const msg=typeof data==="string"?data:JSON.stringify(data);
 if (allow404&&(status===404||/not found/i.test(msg))) return {status:status,data:data};throw new Error("SQL API "+status+": "+msg);
-} return {status:status,data:data};} function sqlSign_(method,url,payload,c) {const m=url.match(/^https?:\/\/([^/?#]+)([^?#]*)(?:\?(.*))?$/),host=m[1],path=m[2]||"/",query=sqlQuery_(m[3]||"");
+} return {status:status,data:data};} function sqlApiRawRequest_(method,path,body,allow404,config) {const c=config||sqlApiConfig_();if (!c.accessKey||!c.secretKey) throw new Error("SQL API keys are not configured in Script Properties.");
+const url=c.host+path,payload=body==null?"":JSON.stringify(body),headers=sqlSign_(method,url,payload,c),options={method:method.toLowerCase(),headers:headers,muteHttpExceptions:true};if (body!=null) {options.contentType="application/json";options.payload=payload;}
+const res=UrlFetchApp.fetch(url,options),status=res.getResponseCode();if (status<200||status>=300) {const text=res.getContentText();if (allow404&&(status===404||/not found/i.test(text))) return {status:status,blob:res.getBlob(),headers:res.getAllHeaders()};throw new Error("SQL API "+status+": "+text);}
+return {status:status,blob:res.getBlob(),headers:res.getAllHeaders()};
+} function sqlSign_(method,url,payload,c) {const m=url.match(/^https?:\/\/([^/?#]+)([^?#]*)(?:\?(.*))?$/),host=m[1],path=m[2]||"/",query=sqlQuery_(m[3]||"");
 const amz=Utilities.formatDate(new Date(),"GMT","yyyyMMdd'T'HHmmss'Z'"),stamp=amz.slice(0,8);
 const canonicalHeaders="host:"+host+"\nx-amz-date:"+amz+"\n";const signed="host;x-amz-date",hash=sqlHex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,payload,Utilities.Charset.UTF_8));
 const request=[method,path,query,canonicalHeaders,signed,hash].join("\n"),scope=[stamp,c.region,c.service,"aws4_request"].join("/");
