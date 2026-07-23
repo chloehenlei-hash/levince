@@ -15,6 +15,9 @@
 - Added a direct SQL fallback path because SQL Account's `/customer` POST keeps returning `MainDataSet: Dataset not in edit or insert mode` even with Postman-shaped payloads.
 - If customer master creation fails, direct SQL confirmation uses `DEFAULT_CUSTOMER_CODE` or `300-C0001` as an existing fallback customer so invoice/OR creation can proceed; the frontend displays that customer master was not created.
 - Added backend marker `sql-direct-customer-fallback-20260723`.
+- Fixed fallback invoice creation after SQL Account returned `No record found` when using customer code `300-C0001` with original company name `testing`.
+- Direct invoice creation now looks up the SQL customer by code before posting Sales Invoice, uses the SQL master customer name for `companyname`, and appends the original pasted customer details into the invoice description.
+- Added backend marker `sql-direct-invoice-code-name-20260723`.
 - Split Direct SQL customer handling from invoice creation on both SQL Direct and Vincenology pages.
 - Added `sqlDirectEnsureCustomer` Apps Script action so the website can confirm an existing SQL customer code or create a new SQL customer before invoice creation.
 - Customer cards now show a green ready state after the SQL customer is confirmed; editing customer fields clears that ready state.
