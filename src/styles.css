@@ -1044,6 +1044,37 @@ textarea:focus {
   height: 16px;
 }
 
+.payment-mini-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(118px, 1fr));
+  gap: 8px;
+  width: min(280px, 100%);
+}
+
+.payment-mini-fields label {
+  display: grid;
+  gap: 4px;
+}
+
+.payment-mini-fields span,
+.sql-rm-amount {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 780;
+}
+
+.payment-mini-fields input {
+  min-height: 36px;
+  padding: 7px 9px;
+  font-size: 0.9rem;
+}
+
+.sql-rm-amount {
+  display: block;
+  margin-top: 5px;
+  color: #237a4b;
+}
+
 .workflow-nav .ghost-button.active {
   border-color: rgba(181, 29, 42, 0.34);
   background: var(--brand-soft);

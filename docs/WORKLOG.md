@@ -1,5 +1,16 @@
 # Worklog
 
+## Foreign Currency Paid RM Flow - 2026-07-23
+
+- Added a paid-date input before marking invoices paid, so Desmond can choose the actual bank-in/payment date.
+- Added `Received RM` input for foreign-currency invoices before marking paid; foreign invoices cannot be marked paid without the actual RM amount.
+- Added Google Sheet invoice columns `Paid Amount RM` and `Payment Currency`, plus payment history `Payment Currency`, appended to avoid shifting old data.
+- Updated SQL Upload so RM invoices and foreign invoices with `Paid Amount RM` are selectable; foreign invoices without received RM stay pending.
+- Updated SQL API upload so foreign invoices upload to SQL as RM using `Paid Amount RM`, with one RM detail row and matching Customer Payment / OR amount.
+- `Not Paid` now clears paid date, paid RM amount, payment currency, payment reference, and proof URL.
+- Production build passed and Apps Script syntax checks passed. Current generated assets include `dist/assets/index-ChOs87dq.js`, `dist/assets/index-DfbJS4bg.css`, and `dist/assets/pdf-ite5TXO2.js`.
+- One-time backlog bank-statement reconciliation is still pending until Chloe provides the bank statement file.
+
 ## SQL Customer Name Resolution - 2026-07-23
 
 - Fixed SQL API upload customer handling after live upload failed with `Customer ... not found`.

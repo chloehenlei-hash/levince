@@ -257,6 +257,7 @@ export default function App() {
   const [markingPaidNo, setMarkingPaidNo] = useState("");
   const [reopeningNo, setReopeningNo] = useState("");
   const [paymentSlipFiles, setPaymentSlipFiles] = useState({});
+  const [paymentInputs, setPaymentInputs] = useState({});
   const [sqlSyncInfo, setSqlSyncInfo] = useState(null);
   const [selectedSqlInvoiceIds, setSelectedSqlInvoiceIds] = useState([]);
   const [retryingOrId, setRetryingOrId] = useState("");
@@ -276,11 +277,11 @@ export default function App() {
     [paidQueue],
   );
   const blockedCurrencyQueue = useMemo(
-    () => paidQueue.filter((invoice) => !isRmCurrency(invoice.Currency)),
+    () => paidQueue.filter((invoice) => !isRmCurrency(invoice.Currency) && parseAmount(invoice["Paid Amount RM"]) <= 0),
     [paidQueue],
   );
   const uploadablePendingQueue = useMemo(
-    () => pendingSqlConfirmQueue.filter((invoice) => isRmCurrency(invoice.Currency)),
+    () => pendingSqlConfirmQueue.filter((invoice) => isRmCurrency(invoice.Currency) || parseAmount(invoice["Paid Amount RM"]) > 0),
     [pendingSqlConfirmQueue],
   );
   const selectedSqlUploadQueue = useMemo(
@@ -305,8 +306,8 @@ export default function App() {
   );
   const sqlWarnings = useMemo(() => {
     const warnings = [];
-    if (uploadablePendingQueue.length) warnings.push(`${uploadablePendingQueue.length} paid RM invoice(s) need Chloe confirmation before API upload.`);
-    if (blockedCurrencyQueue.length) warnings.push(`${blockedCurrencyQueue.length} paid invoice(s) are not RM currency, so they will stay out of this API upload.`);
+    if (uploadablePendingQueue.length) warnings.push(`${uploadablePendingQueue.length} paid invoice(s) need Chloe confirmation before API upload.`);
+    if (blockedCurrencyQueue.length) warnings.push(`${blockedCurrencyQueue.length} foreign-currency paid invoice(s) need actual received RM before SQL upload.`);
     return warnings;
   }, [blockedCurrencyQueue, uploadablePendingQueue]);
 
@@ -390,13 +391,20 @@ export default function App() {
 
   async function markPaid(invoice) {
     const invoiceNo = String(invoice["Internal Invoice No"] || "");
-    const paidDate = new Date().toISOString().slice(0, 10);
+    const id = String(invoice["Invoice ID"] || "");
+    const input = paymentInputs[id] || {};
+    const paidDate = input.paymentDate || new Date().toISOString().slice(0, 10);
+    const paidAmountRm = parseAmount(input.paidAmountRm);
+    if (!isRmCurrency(invoice.Currency) && paidAmountRm <= 0) {
+      setMessage(`${invoiceNo} is ${invoice.Currency}. Please fill actual received RM before marking paid.`);
+      return;
+    }
     const slipFile = paymentSlipFiles[invoice["Invoice ID"]] || null;
     setMarkingPaidNo(invoiceNo);
     setRecentPaidUndo({ invoiceNo, customerName: invoice["Customer Name"] });
     setInvoices((current) => current.map((row) => (
       row["Invoice ID"] === invoice["Invoice ID"]
-        ? { ...row, Status: "Paid", "SQL Status": "Not Uploaded", "Paid At": paidDate }
+        ? { ...row, Status: "Paid", "SQL Status": "Not Uploaded", "Paid At": paidDate, "Paid Amount RM": paidAmountRm || "" }
         : row
     )));
     setMessage(slipFile ? `${invoiceNo} is marked Paid. Uploading payment slip...` : `${invoiceNo} is marked Paid. No payment slip attached.`);
@@ -405,6 +413,7 @@ export default function App() {
       await callWorkflowApi("markPaid", {
         invoiceId: invoice["Invoice ID"],
         paymentDate: paidDate,
+        paidAmountRm: paidAmountRm || "",
         paymentRef: "",
         proofUrl: "",
         proofFile,
@@ -412,6 +421,11 @@ export default function App() {
       setPaymentSlipFiles((current) => {
         const next = { ...current };
         delete next[invoice["Invoice ID"]];
+        return next;
+      });
+      setPaymentInputs((current) => {
+        const next = { ...current };
+        delete next[id];
         return next;
       });
       await loadInvoices();
@@ -462,14 +476,14 @@ export default function App() {
       return;
     }
     if (!selectedSqlUploadQueue.length) {
-      setMessage("Choose at least one RM invoice to confirm for SQL upload.");
+      setMessage("Choose at least one invoice to confirm for SQL upload.");
       return;
     }
     const count = selectedSqlUploadQueue.length;
     const pending = uploadablePendingQueue.length - count;
-    const skipped = blockedCurrencyQueue.length ? `\n\n${blockedCurrencyQueue.length} non-RM invoice(s) will be skipped for now.` : "";
-    const leftPending = pending > 0 ? `\n\n${pending} RM invoice(s) will stay pending.` : "";
-    if (!window.confirm(`Confirm ${count} selected paid RM invoice(s) for scheduled SQL API upload?${leftPending}${skipped}`)) return;
+    const skipped = blockedCurrencyQueue.length ? `\n\n${blockedCurrencyQueue.length} foreign-currency invoice(s) have no received RM yet and will stay pending.` : "";
+    const leftPending = pending > 0 ? `\n\n${pending} invoice(s) will stay pending.` : "";
+    if (!window.confirm(`Confirm ${count} selected paid invoice(s) for scheduled SQL API upload?${leftPending}${skipped}`)) return;
     try {
       setInvoices((current) => current.map((invoice) => (
         selectedSqlUploadQueue.some((row) => row["Invoice ID"] === invoice["Invoice ID"])
@@ -480,7 +494,7 @@ export default function App() {
         invoiceIds: selectedSqlUploadQueue.map((invoice) => invoice["Invoice ID"]),
       });
       await loadInvoices();
-      const skipText = blockedCurrencyQueue.length ? ` ${blockedCurrencyQueue.length} non-RM invoice(s) were left untouched.` : "";
+      const skipText = blockedCurrencyQueue.length ? ` ${blockedCurrencyQueue.length} foreign-currency invoice(s) were left pending for received RM.` : "";
       const pendingText = pending > 0 ? ` ${pending} invoice(s) stayed pending.` : "";
       setMessage(`${data.count || 0} selected invoice(s) confirmed. Waiting for ${nextSqlRunLabel()} SQL API upload.${pendingText}${skipText}`);
     } catch (error) {
@@ -530,6 +544,10 @@ export default function App() {
     } finally {
       setTestingVincenology(false);
     }
+  }
+
+  function updatePaymentInput(invoiceId, patch) {
+    setPaymentInputs((current) => ({ ...current, [invoiceId]: { ...(current[invoiceId] || {}), ...patch } }));
   }
 
   const recentPaidNo = String(recentPaidUndo?.invoiceNo || "");
@@ -645,6 +663,9 @@ export default function App() {
                   const isMarking = markingPaidNo === invoiceNo;
                   const isReopening = reopeningNo === invoiceNo;
                   const slipFile = paymentSlipFiles[invoice["Invoice ID"]];
+                  const invoiceId = String(invoice["Invoice ID"] || "");
+                  const payInput = paymentInputs[invoiceId] || {};
+                  const needsRmAmount = !isPaid && !isRmCurrency(invoice.Currency);
                   return (
                   <tr key={invoice["Invoice ID"]} className={isPaid ? "workflow-row-paid" : ""}>
                     <td><strong>{invoice["Internal Invoice No"]}</strong></td>
@@ -655,6 +676,32 @@ export default function App() {
                     <td>{displayDate(invoice["Paid At"])}</td>
                     <td>
                       <div className="workflow-row-actions">
+                        {!isPaid ? (
+                          <div className="payment-mini-fields">
+                            <label>
+                              <span>Paid date</span>
+                              <input
+                                type="date"
+                                value={payInput.paymentDate || new Date().toISOString().slice(0, 10)}
+                                onChange={(event) => updatePaymentInput(invoiceId, { paymentDate: event.target.value })}
+                              />
+                            </label>
+                            {needsRmAmount ? (
+                              <label>
+                                <span>Received RM</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  inputMode="decimal"
+                                  value={payInput.paidAmountRm || ""}
+                                  placeholder="RM amount"
+                                  onChange={(event) => updatePaymentInput(invoiceId, { paidAmountRm: event.target.value })}
+                                />
+                              </label>
+                            ) : null}
+                          </div>
+                        ) : null}
                         {!isPaid ? (
                           <label className={`slip-upload-button ${slipFile ? "has-file" : ""}`}>
                             <Paperclip aria-hidden="true" />
@@ -774,7 +821,7 @@ export default function App() {
                 onClick={() => setSelectedSqlInvoiceIds(uploadablePendingQueue.map((invoice) => String(invoice["Invoice ID"])))}
                 disabled={!uploadablePendingQueue.length}
               >
-                Select All RM
+                Select All Ready
               </button>
               <button
                 type="button"
@@ -818,10 +865,11 @@ export default function App() {
                   {paidQueue.length ? [...paidQueue].sort(sortInvoicesByLatest).map((invoice) => {
                     const id = String(invoice["Invoice ID"] || "");
                     const isReady = invoice["SQL Status"] === "Ready for SQL";
-                    const canSelect = invoice["SQL Status"] !== "Ready for SQL" && isRmCurrency(invoice.Currency);
+                    const sqlRmAmount = parseAmount(invoice["Paid Amount RM"]);
+                    const canSelect = invoice["SQL Status"] !== "Ready for SQL" && (isRmCurrency(invoice.Currency) || sqlRmAmount > 0);
                     const isSelected = selectedSqlInvoiceIds.includes(id);
                     const hasOr = Boolean(invoice["SQL Payment Doc No"]);
-                    const canRetryOr = isRmCurrency(invoice.Currency) && !hasOr && Boolean(invoice["SQL API Error"]);
+                    const canRetryOr = (isRmCurrency(invoice.Currency) || sqlRmAmount > 0) && !hasOr && Boolean(invoice["SQL API Error"]);
                     return (
                     <tr key={invoice["Invoice ID"]} className={!canSelect && !isReady ? "workflow-row-muted" : ""}>
                       <td>
@@ -847,7 +895,12 @@ export default function App() {
                       <td><strong>{invoice["Internal Invoice No"]}</strong></td>
                       <td>{invoice["Customer Name"]}</td>
                       <td>{displayDate(invoice["Invoice Date"])}</td>
-                      <td>{money(invoice.Total, invoice.Currency)}</td>
+                      <td>
+                        {money(invoice.Total, invoice.Currency)}
+                        {!isRmCurrency(invoice.Currency) && sqlRmAmount > 0 ? (
+                          <span className="sql-rm-amount">SQL {money(sqlRmAmount, "RM")}</span>
+                        ) : null}
+                      </td>
                       <td><span className={`workflow-status ${statusClass(invoice["SQL Status"])}`}>{invoice["SQL Status"] || "Not Uploaded"}</span></td>
                       <td>{hasOr ? <span className="workflow-status paid">OR {invoice["SQL Payment Doc No"]}</span> : ""}</td>
                       <td>
