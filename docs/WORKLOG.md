@@ -1,5 +1,14 @@
 # Worklog
 
+## SQL OR Retry Flow - 2026-07-23
+
+- Added a dedicated `retrySqlPayment` Apps Script action for retrying Customer Payment / OR creation on one invoice.
+- Changed scheduled SQL sync to save the SQL Sales Invoice DocNo/DocKey immediately after invoice creation/fetch, before attempting OR creation.
+- If OR creation fails, the invoice stays visible in SQL Upload with `SQL API Error`; Chloe can retry OR without reconfirming the invoice.
+- Added a `Retry OR` button to the SQL Upload table for RM invoices that have an SQL API error and no OR number yet.
+- Ran Apps Script syntax checks for `Code.gs`, `SqlApi.gs`, and `Scheduler.gs`.
+- Ran production build successfully; current generated assets include `dist/assets/index-BR34zF2J.js` and `dist/assets/pdf-h160keQ-.js`.
+
 ## Financial Jasonurian Entry + Download Save Guard - 2026-07-23
 
 - Added a new website navigation entry and page shell named `Financial Jasonurian Berhad` for the second SQL account workflow.

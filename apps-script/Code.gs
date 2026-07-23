@@ -15,7 +15,7 @@ function doPost(e) {
   try {
     q = req(e);
     setup();
-    const map = { setup: () => ({ ok: true }), listInvoices, createInvoice, markPaid, reopenInvoices, confirmSqlUpload, markUploaded, markCustomersUploaded, cancelInvoice, refreshSqlExport, sqlSyncStatus, clearSqlSyncStatus, parseInvoiceWithGemini };
+    const map = { setup: () => ({ ok: true }), listInvoices, createInvoice, markPaid, reopenInvoices, confirmSqlUpload, markUploaded, markCustomersUploaded, cancelInvoice, refreshSqlExport, sqlSyncStatus, clearSqlSyncStatus, retrySqlPayment, parseInvoiceWithGemini };
     if (!map[q.action]) throw new Error("Unknown action: " + q.action);
     const out = map[q.action](q);
     return q.transport === "iframe" ? html(out, q.requestId) : json(out);

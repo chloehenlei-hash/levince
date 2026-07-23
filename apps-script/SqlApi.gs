@@ -36,6 +36,7 @@ function sqlSyncPaidInvoices() {
       const api = existing || sqlApiRequest_("POST", "/salesinvoice", sqlInvoicePayload_(inv, allItems, c, s)).data;
       const doc = sqlFindObject_(api) || sqlFindDoc_(lookup) || {};
       if (!doc.dockey) throw new Error("Sales Invoice was created/found, but SQL DocKey is missing.");
+      updateInv(inv["Invoice ID"], { "SQL Doc No": doc.docno || "", "SQL Doc Key": doc.dockey || "", "SQL API Error": "", "Updated At": now() });
       const pay = sqlEnsureCustomerPayment_(inv, c, doc, s);
       if (!pay.dockey) throw new Error("Customer Payment was created/found, but SQL Payment DocKey is missing.");
       updateInv(inv["Invoice ID"], { Status: "Uploaded to SQL", "SQL Status": "Uploaded to SQL", "Uploaded To SQL At": now(), "Uploaded By": "SQL API", "SQL Doc No": doc.docno || "", "SQL Doc Key": doc.dockey || "", "SQL Payment Doc No": pay.docno || "", "SQL Payment Doc Key": pay.dockey || "", "SQL API Error": "", "Updated At": now() });
@@ -49,6 +50,33 @@ function sqlSyncPaidInvoices() {
   });
   result.ok = result.failed.length === 0;
   return result;
+}
+
+function retrySqlPayment(q) {
+  setup();
+  const f = findInv(q.invoiceId), inv = f.inv, s = settings();
+  if (!isRmCurrency(inv.Currency)) throw new Error("Only RM invoices can create OR automatically for now.");
+  const customers = syncCustomers([inv], s), c = custMap(customers)[ckey(inv["Customer Name"])];
+  if (!c) throw new Error("Customer record is missing.");
+  sqlEnsureCustomer_(c, s);
+  if (c.Status !== "Uploaded") markCustomersUploaded({ user: "SQL API", customerKeys: [c["Customer Key"]] });
+  const lookup = "/salesinvoice?docref1=" + encodeURIComponent(inv["Internal Invoice No"]);
+  const existing = sqlFindDoc_(lookup);
+  const api = existing || sqlApiRequest_("POST", "/salesinvoice", sqlInvoicePayload_(inv, rows(T.item), c, s)).data;
+  const doc = sqlFindObject_(api) || sqlFindDoc_(lookup) || {};
+  if (!doc.dockey) throw new Error("Sales Invoice exists, but SQL DocKey is missing.");
+  updateInv(inv["Invoice ID"], { "SQL Doc No": doc.docno || "", "SQL Doc Key": doc.dockey || "", "SQL API Error": "", "Updated At": now() });
+  try {
+    const pay = sqlEnsureCustomerPayment_(inv, c, doc, s);
+    if (!pay.dockey) throw new Error("Customer Payment / OR DocKey is missing.");
+    updateInv(inv["Invoice ID"], { Status: "Uploaded to SQL", "SQL Status": "Uploaded to SQL", "Uploaded To SQL At": now(), "Uploaded By": "SQL API", "SQL Payment Doc No": pay.docno || "", "SQL Payment Doc Key": pay.dockey || "", "SQL API Error": "", "Updated At": now() });
+    log(q, "retrySqlPayment", inv["Invoice ID"], inv["Internal Invoice No"], "OR: " + (pay.docno || "created"));
+    return { ok: true, invoiceNo: inv["Internal Invoice No"], sqlDocNo: doc.docno || "", sqlPaymentDocNo: pay.docno || "" };
+  } catch (err) {
+    updateInv(inv["Invoice ID"], { "SQL API Error": "OR retry failed: " + (err.message || String(err)), "Updated At": now() });
+    log(q, "retrySqlPaymentError", inv["Invoice ID"], inv["Internal Invoice No"], err.message || String(err));
+    throw err;
+  }
 }
 
 function sqlEnsureCustomerPayment_(inv, c, invoiceDoc, s) {

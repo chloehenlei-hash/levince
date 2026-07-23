@@ -259,6 +259,7 @@ export default function App() {
   const [paymentSlipFiles, setPaymentSlipFiles] = useState({});
   const [sqlSyncInfo, setSqlSyncInfo] = useState(null);
   const [selectedSqlInvoiceIds, setSelectedSqlInvoiceIds] = useState([]);
+  const [retryingOrId, setRetryingOrId] = useState("");
 
   const paidQueue = useMemo(
     () => invoices.filter((invoice) => invoice.Status === "Paid" && invoice["SQL Status"] !== "Uploaded to SQL"),
@@ -495,6 +496,24 @@ export default function App() {
       setMessage("SQL upload status view cleared. History is still kept in Google Sheet.");
     } catch (error) {
       setMessage(error.message);
+    }
+  }
+
+  async function retryOr(invoice) {
+    const id = String(invoice["Invoice ID"] || "");
+    const invoiceNo = String(invoice["Internal Invoice No"] || "");
+    setRetryingOrId(id);
+    setMessage(`Retrying OR for ${invoiceNo}...`);
+    try {
+      const data = await callWorkflowApi("retrySqlPayment", { invoiceId: id });
+      await loadInvoices();
+      await loadSqlSyncStatus();
+      setMessage(`OR created for ${invoiceNo}${data.sqlPaymentDocNo ? `: ${data.sqlPaymentDocNo}` : ""}.`);
+    } catch (error) {
+      await loadInvoices();
+      setMessage(`OR retry failed for ${invoiceNo}: ${error.message}`);
+    } finally {
+      setRetryingOrId("");
     }
   }
 
@@ -776,6 +795,7 @@ export default function App() {
                     <th>Total</th>
                     <th>Status</th>
                     <th>OR</th>
+                    <th>Action</th>
                     <th>Error</th>
                   </tr>
                 </thead>
@@ -785,6 +805,8 @@ export default function App() {
                     const isReady = invoice["SQL Status"] === "Ready for SQL";
                     const canSelect = invoice["SQL Status"] !== "Ready for SQL" && isRmCurrency(invoice.Currency);
                     const isSelected = selectedSqlInvoiceIds.includes(id);
+                    const hasOr = Boolean(invoice["SQL Payment Doc No"]);
+                    const canRetryOr = isRmCurrency(invoice.Currency) && !hasOr && Boolean(invoice["SQL API Error"]);
                     return (
                     <tr key={invoice["Invoice ID"]} className={!canSelect && !isReady ? "workflow-row-muted" : ""}>
                       <td>
@@ -812,12 +834,24 @@ export default function App() {
                       <td>{displayDate(invoice["Invoice Date"])}</td>
                       <td>{money(invoice.Total, invoice.Currency)}</td>
                       <td><span className={`workflow-status ${statusClass(invoice["SQL Status"])}`}>{invoice["SQL Status"] || "Not Uploaded"}</span></td>
-                      <td>{invoice["SQL Payment Doc No"] || ""}</td>
+                      <td>{hasOr ? <span className="workflow-status paid">OR {invoice["SQL Payment Doc No"]}</span> : ""}</td>
+                      <td>
+                        {canRetryOr ? (
+                          <button
+                            type="button"
+                            className="secondary-button compact-button"
+                            onClick={() => retryOr(invoice)}
+                            disabled={retryingOrId === id}
+                          >
+                            {retryingOrId === id ? "Retrying..." : "Retry OR"}
+                          </button>
+                        ) : ""}
+                      </td>
                       <td>{invoice["SQL API Error"] || ""}</td>
                     </tr>
                     );
                   }) : (
-                    <tr><td colSpan="8" className="workflow-empty">No paid invoices waiting for SQL.</td></tr>
+                    <tr><td colSpan="9" className="workflow-empty">No paid invoices waiting for SQL.</td></tr>
                   )}
                 </tbody>
               </table>
