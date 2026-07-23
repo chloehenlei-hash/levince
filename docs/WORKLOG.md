@@ -7,6 +7,7 @@
 - SQL API `400 ... not found` responses are now treated as not-found during lookup, instead of stopping the upload immediately.
 - When an existing or newly created SQL customer is resolved, the actual SQL customer code is written back to both the customer archive and the invoice row.
 - The same customer resolution now runs for both scheduled invoice upload and `Retry OR`.
+- Compressed `apps-script/SqlApi.gs` to 97 lines so Chloe can paste it into Apps Script while keeping the 200-line limit.
 - Apps Script syntax check passed for `Code.gs`, `SqlApi.gs`, and `Scheduler.gs`.
 
 ## Vincenology API Setup Start - 2026-07-23
