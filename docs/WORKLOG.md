@@ -2,6 +2,9 @@
 
 ## Direct SQL Sales Invoice Insert Payload Fix - 2026-07-23
 
+- Added backend marker `sql-customer-stage-20260723` and stage-specific direct-create errors so future screenshots identify whether SQL rejects customer creation or Sales Invoice creation.
+- Customer creation now tries a branch-only insert payload first, then child-row insert keys, then the raw Postman-style sample payload; this targets the same SQL `MainDataSet` edit/insert-mode error when a new customer must be created before the invoice.
+- Customer payload defaults for `statementtype`, `agingon`, and `status` now match the Postman sample blanks instead of forcing local defaults during direct create.
 - Chloe provided SQL Account's official `postman_collection.json`; the `Create Invoice` sample for `POST /salesinvoice` uses a full document dataset payload, not the smaller payload previously sent by the website.
 - The repeated plain `MainDataSet: Dataset not in edit or insert mode` error was likely happening before Sales Invoice creation when a new SQL customer had to be created; `POST /customer` was still using a shortened payload.
 - Updated `sqlCustomerPayload_` to follow the official `Create Customer` sample shape, including `companyname2`, `biznature`, `outstanding`, tax/e-invoice fields, `sdscreditcontrol`, `sdsbankacc`, and `sdstariff`.
