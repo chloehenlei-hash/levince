@@ -1,4 +1,4 @@
-const SQL_API_BACKEND_VERSION="sql-direct-customer-gate-20260723";const SQL_API_DEFAULTS={host:"https://api.sql.my",region:"ap-southeast-5",service:"sqlaccount"}
+const SQL_API_BACKEND_VERSION="sql-direct-customer-match-20260723";const SQL_API_DEFAULTS={host:"https://api.sql.my",region:"ap-southeast-5",service:"sqlaccount"}
 ;function sqlApiConfig_(prefix) {prefix=prefix||"";const p=PropertiesService.getScriptProperties();
 return {host:(p.getProperty(prefix+"SQL_API_HOST")||SQL_API_DEFAULTS.host).replace(/\/+$/,""),region:p.getProperty(prefix+"SQL_API_REGION")||SQL_API_DEFAULTS.region,service:p.getProperty(prefix+"SQL_API_SERVICE")||SQL_API_DEFAULTS.service,accessKey:(p.getProperty(prefix+"SQL_API_ACCESS_KEY")||"").trim(),secretKey:(p.getProperty(prefix+"SQL_API_SECRET_KEY")||"").trim()}
 ;} function sqlConnectionStatus() {return sqlConnectionStatusFor_("");} function vincenologySqlConnectionStatus() {return sqlConnectionStatusFor_("VINCENOLOGY_");
@@ -6,11 +6,13 @@ return {host:(p.getProperty(prefix+"SQL_API_HOST")||SQL_API_DEFAULTS.host).repla
 ;const r=sqlApiRequest_("GET","/version",null,false,c);return {ok:true,configured:true,status:r.status,backendVersion:SQL_API_BACKEND_VERSION,data:r.data}
 ;} function sqlDirectPrefix_(q) {return q.account==="vincenology"?"VINCENOLOGY_":"";
 } function sqlSearchCustomers(q) {const query=String(q.query||"").trim();if (query.length<2) return {ok:true,customers:[]};const c=sqlApiConfig_(sqlDirectPrefix_(q)),seen={},out=[];
-sqlCustomerSearchPaths_(query).forEach(path=>{try {const r=sqlApiRequest_("GET",path,null,true,c);sqlFlattenObjects_(r.data).forEach(x=>{const row=sqlCustomerSummary_(x),key=(row.sqlCustomerCode||"")+"|"+(row.customerName||"");if (!row.customerName&&!row.sqlCustomerCode) return;if (seen[key]) return;seen[key]=true;out.push(row);});} catch (_) {}});
+sqlCustomerSearchPaths_(query).forEach(path=>{try {const r=sqlApiRequest_("GET",path,null,true,c);sqlFlattenObjects_(r.data).forEach(x=>{const row=sqlCustomerSummary_(x),key=(row.sqlCustomerCode||"")+"|"+(row.customerName||"");if (!row.customerName&&!row.sqlCustomerCode) return;if (!sqlCustomerSearchMatch_(row,query)) return;if (seen[key]) return;seen[key]=true;out.push(row);});} catch (_) {}});
 return {ok:true,customers:out.slice(0,10)};
 } function sqlCustomerSearchPaths_(q) {const e=encodeURIComponent(q);return ["/customer/"+e,"/customer?code="+e,"/customer?companyname="+e,"/customer?search="+e,"/customer?keyword="+e];
 } function sqlCustomerSummary_(x) {const b=sqlCustomerBranch_(x),addr=[val_(b,"address1","ADDRESS1","_ADDRESS1","Address1"),val_(b,"address2","ADDRESS2","_ADDRESS2","Address2"),val_(b,"address3","ADDRESS3","_ADDRESS3","Address3"),val_(b,"address4","ADDRESS4","_ADDRESS4","Address4")].filter(Boolean).join("\n");
 return {sqlCustomerCode:sqlCustomerCode_(x)||sqlCustomerCode_(b),customerName:val_(x,"companyname","COMPANYNAME","name","Name","companyName","CompanyName"),customerPhone:phone(val_(b,"phone1","PHONE1","_PHONE1","mobile","MOBILE","_MOBILE")||val_(x,"phone1","PHONE1","mobile","MOBILE")),customerEmail:val_(b,"email","EMAIL","_EMAIL")||val_(x,"email","EMAIL"),billingAddress:addr,tin:val_(x,"tin","TIN","TIN(14)"),idType:val_(x,"idtype","IDTYPE"),idNo:val_(x,"idno","IDNO","IDNO(20)")};
+} function sqlCustomerSearchMatch_(row,query) {const q=sqlNormLoose_(query),digits=String(query||"").replace(/\D+/g,"");if (!q&&!digits) return false;
+return [row.customerName,row.sqlCustomerCode,row.customerEmail,row.tin,row.idNo].some(v=>sqlNormLoose_(v).indexOf(q)>=0)||(digits&&String(row.customerPhone||"").replace(/\D+/g,"").indexOf(digits)>=0);
 } function sqlCustomerBranch_(x) {const b=x&&(x.sdsbranch||x.SDSBRANCH||x.branch||x.Branch||x.branches||x.Branches);return Array.isArray(b)?b[0]||{}:b||{};
 } function val_(o) {for (let i=1;i<arguments.length;i++) {const v=o&&o[arguments[i]];if (v!==undefined&&v!==null&&String(v)!=="") return String(v).trim();} return "";
 } function sqlDirectInput_(q) {const cu=q.customer||{},iv=q.invoice||{},pay=q.payment||{},ref=String(q.docRef||("WEB-"+Utilities.getUuid().slice(0,8))).trim(),amt=num(iv.amount);
@@ -124,7 +126,8 @@ for (let i=0;i<values.length;i++) {const x=sqlFindObject_(values[i]);if (x) retu
 const values=Array.isArray(v)?v:Object.keys(v).map(k=>v[k]);values.forEach(x=>sqlFlattenObjects_(x,out));
 return out;} function sqlCustomerCode_(v) {if (!v||typeof v!=="object") return "";return String(v.code||v.Code||v.CODE||v.customerCode||v.CustomerCode||v["CODE(10)"]||"").trim();
 } function sqlDocKey_(v) {if (!v||typeof v!=="object") return "";return String(v.dockey||v.DocKey||v.DOCKEY||v.docKey||v["DOCKEY"]||"").trim();
-} function sqlNorm_(v) {return String(v||"").trim().replace(/\s+/g," ").toUpperCase();} function sqlApiRequest_(method,path,body,allow404,config) {const c=config||sqlApiConfig_();
+} function sqlNorm_(v) {return String(v||"").trim().replace(/\s+/g," ").toUpperCase();} function sqlNormLoose_(v) {return String(v||"").trim().replace(/[^A-Z0-9]+/gi," ").replace(/\s+/g," ").toUpperCase();}
+function sqlApiRequest_(method,path,body,allow404,config) {const c=config||sqlApiConfig_();
 if (!c.accessKey||!c.secretKey) throw new Error("SQL API keys are not configured in Script Properties.");
 const url=c.host+path,payload=body==null?"":JSON.stringify(body);const headers=sqlSign_(method,url,payload,c);
 const options={method:method.toLowerCase(),headers:headers,muteHttpExceptions:true};if (body!=null) {options.contentType="application/json";

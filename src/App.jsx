@@ -116,6 +116,27 @@ function normaliseSearchName(value) {
   return textValue(value).replace(/\s+/g, " ").toUpperCase();
 }
 
+function normaliseLookupValue(value) {
+  return textValue(value).replace(/[^a-z0-9]+/gi, " ").replace(/\s+/g, " ").trim().toUpperCase();
+}
+
+function normalisePhoneLookup(value) {
+  return textValue(value).replace(/\D+/g, "");
+}
+
+function isExactSqlCustomerMatch(customer, query) {
+  const target = normaliseLookupValue(query);
+  const phoneTarget = normalisePhoneLookup(query);
+  if (!target && !phoneTarget) return false;
+  const names = [
+    customer.customerName,
+    customer.sqlCustomerCode,
+    customer.customerEmail,
+  ].map(normaliseLookupValue);
+  if (target && names.some((value) => value === target)) return true;
+  return Boolean(phoneTarget && normalisePhoneLookup(customer.customerPhone) === phoneTarget);
+}
+
 function toDateInputValue(value) {
   const text = textValue(value);
   if (!text) return todayKey();
@@ -166,6 +187,7 @@ function directFormFromParsedInvoice(parsed, currentForm) {
     ...currentForm,
     docRef: textValue(invoice.receiptNumber) || currentForm.docRef || directReference(),
     customerName: customerName || currentForm.customerName,
+    sqlCustomerCode: customerName && normaliseLookupValue(customerName) !== normaliseLookupValue(currentForm.customerName) ? "" : currentForm.sqlCustomerCode,
     customerEmail: /@/.test(invoice.email || "") ? invoice.email : currentForm.customerEmail,
     customerPhone: textValue(invoice.phone) && invoice.phone !== "-" ? invoice.phone : currentForm.customerPhone,
     billingAddress: billingAddress || currentForm.billingAddress,
@@ -829,9 +851,7 @@ export default function App() {
     try {
       const data = await callWorkflowApi("sqlSearchCustomers", { account: accountKey, query: searchText });
       const results = data.customers || [];
-      const target = normaliseSearchName(searchText);
-      const exact = results.find((customer) => normaliseSearchName(customer.customerName) === target);
-      const picked = exact || (results.length === 1 ? results[0] : null);
+      const picked = results.find((customer) => isExactSqlCustomerMatch(customer, searchText));
       if (picked) {
         selectSqlCustomer(accountKey, picked, {
           message: `Existing SQL customer selected: ${picked.customerName || picked.sqlCustomerCode}.`,

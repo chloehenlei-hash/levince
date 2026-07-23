@@ -2,6 +2,11 @@
 
 ## Direct SQL Sales Invoice Insert Payload Fix - 2026-07-23
 
+- Fixed Direct SQL customer auto-match after Chloe observed `testing` being replaced by existing `CASH SALES`.
+- SQL customer search now filters out SQL API responses that do not actually match the query by name, code, email, TIN, ID no, or phone.
+- Direct SQL auto lookup now only auto-selects exact customer matches; fuzzy or unrelated results remain selectable but are not applied automatically.
+- Quick paste clears an old SQL Customer Code when the parsed customer/company name changes.
+- Added backend marker `sql-direct-customer-match-20260723`.
 - Split Direct SQL customer handling from invoice creation on both SQL Direct and Vincenology pages.
 - Added `sqlDirectEnsureCustomer` Apps Script action so the website can confirm an existing SQL customer code or create a new SQL customer before invoice creation.
 - Customer cards now show a green ready state after the SQL customer is confirmed; editing customer fields clears that ready state.
