@@ -102,7 +102,7 @@ return {code:code,controlaccount:pick(s,"DEFAULT_CUSTOMER_CONTROL_ACCOUNT","300-
 const total=sqlUploadAmount_(inv),foreign=!isRmCurrency(inv.Currency),moneyRows=allItems.filter(x=>x["Invoice ID"]===inv["Invoice ID"]&&Number(x.Amount)!==0),single=foreign||moneyRows.some(x=>Number(x.Amount)<0);
 const items=single?[{Description:"LeVince Chauffeur Service - "+inv["Internal Invoice No"],Quantity:1,UOM:pick(s,"DEFAULT_UOM","UNIT"),"Unit Price":total,Amount:total}]:moneyRows;if (!items.length) throw new Error("No money rows are available for SQL upload.");
 return {dockey:0,docno:"",docdate:date,postdate:date,taxdate:date,code:c["SQL Customer Code"],companyname:inv["Customer Name"],address1:a[0]||"",address2:a[1]||"",address3:a[2]||"",address4:a[3]||"",country:pick(s,"DEFAULT_COUNTRY","MY"),phone1:phone(inv["Customer Phone"]),agent:pick(s,"DEFAULT_AGENT","----"),project:pick(s,"DEFAULT_PROJECT","----"),terms:inv.Terms||pick(s,"DEFAULT_TERMS","C.O.D."),currencycode:"",currencyrate:"1.00",description:"LeVince Chauffeur Service",cancelled:false,docamt:sqlMoney_(total),localdocamt:sqlMoney_(total),docref1:String(inv["Internal Invoice No"]),tin:inv.TIN||"",idtype:Number(inv["ID Type"]||0),idno:inv["ID No"]||"",submissiontype:Number(pick(s,"DEFAULT_SUBMISSION_TYPE",17)),changed:true,sdsdocdetail:items.map((x,i)=>sqlDetail_(x,i+1,s))}
-;} function sqlCreateSalesInvoice_(payload,lookup,config) {const tries=["lean","dtl","neg"],errs=[];for (let i=0;i<tries.length;i++) {const found=sqlFindDoc_(lookup,config);if (found) return found;try {return sqlApiRequest_("POST","/salesinvoice",sqlInsertDocPayload_(payload,tries[i]),false,config).data;} catch (err) {errs.push("v"+(i+1)+": "+(err.message||String(err)));const after=sqlFindDoc_(lookup,config);if (after) return after;}}throw new Error(errs.join(" | "));
+;} function sqlCreateSalesInvoice_(payload,lookup,config) {const before=sqlFindDoc_(lookup,config);if (before) return before;const tries=["lean","dtl","neg"],errs=[];for (let i=0;i<tries.length;i++) {try {return sqlApiRequest_("POST","/salesinvoice",sqlInsertDocPayload_(payload,tries[i]),false,config).data;} catch (err) {if (sqlIsRateLimit_(err)) throw err;errs.push("v"+(i+1)+": "+(err.message||String(err)));const after=sqlFindDoc_(lookup,config);if (after) return after;}}throw new Error(errs.join(" | "));
 } function sqlInsertDocPayload_(payload,mode) {const out=JSON.parse(JSON.stringify(payload||{}));if (!out.docno) delete out.docno;if (mode==="neg") out.dockey=-1;else if (out.dockey===0||out.dockey===""||out.dockey==null) delete out.dockey;
 (out.sdsdocdetail||[]).forEach(x=>{delete x.dockey;if (mode==="dtl"||mode==="neg") x.dtlkey=-1;else delete x.dtlkey;});return out;
 } function sqlDetail_(x,seq,s) {const amount=Number(x.Amount),qty=Number(x.Quantity)||1;const price=Number(x["Unit Price"]);
@@ -124,11 +124,12 @@ if (!c.accessKey||!c.secretKey) throw new Error("SQL API keys are not configured
 const url=c.host+path,payload=body==null?"":JSON.stringify(body);const headers=sqlSign_(method,url,payload,c);
 const options={method:method.toLowerCase(),headers:headers,muteHttpExceptions:true};if (body!=null) {options.contentType="application/json";
 options.payload=payload;} const res=UrlFetchApp.fetch(url,options),status=res.getResponseCode(),text=res.getContentText();
-let data=text;try {data=text?JSON.parse(text):{};} catch (_) {} if (status<200||status>=300) {const msg=typeof data==="string"?data:JSON.stringify(data);
+let data=text;try {data=text?JSON.parse(text):{};} catch (_) {} if (status<200||status>=300) {if (status===429) throw new Error("SQL API 429: Too many requests. Please wait 1-2 minutes, then try again.");
+const msg=typeof data==="string"?data:JSON.stringify(data);
 if (allow404&&(status===404||/not found/i.test(msg))) return {status:status,data:data};throw new Error("SQL API "+status+": "+msg);
 } return {status:status,data:data};} function sqlApiRawRequest_(method,path,body,allow404,config) {const c=config||sqlApiConfig_();if (!c.accessKey||!c.secretKey) throw new Error("SQL API keys are not configured in Script Properties.");
 const url=c.host+path,payload=body==null?"":JSON.stringify(body),headers=sqlSign_(method,url,payload,c),options={method:method.toLowerCase(),headers:headers,muteHttpExceptions:true};if (body!=null) {options.contentType="application/json";options.payload=payload;}
-const res=UrlFetchApp.fetch(url,options),status=res.getResponseCode();if (status<200||status>=300) {const text=res.getContentText();if (allow404&&(status===404||/not found/i.test(text))) return {status:status,blob:res.getBlob(),headers:res.getAllHeaders()};throw new Error("SQL API "+status+": "+text);}
+const res=UrlFetchApp.fetch(url,options),status=res.getResponseCode();if (status<200||status>=300) {const text=res.getContentText();if (status===429) throw new Error("SQL API 429: Too many requests. Please wait 1-2 minutes, then try again.");if (allow404&&(status===404||/not found/i.test(text))) return {status:status,blob:res.getBlob(),headers:res.getAllHeaders()};throw new Error("SQL API "+status+": "+text);}
 return {status:status,blob:res.getBlob(),headers:res.getAllHeaders()};
 } function sqlSign_(method,url,payload,c) {const m=url.match(/^https?:\/\/([^/?#]+)([^?#]*)(?:\?(.*))?$/),host=m[1],path=m[2]||"/",query=sqlQuery_(m[3]||"");
 const amz=Utilities.formatDate(new Date(),"GMT","yyyyMMdd'T'HHmmss'Z'"),stamp=amz.slice(0,8);
@@ -142,6 +143,7 @@ const kSigning=Utilities.computeHmacSha256Signature(Utilities.newBlob("aws4_requ
 const signature=sqlHex_(Utilities.computeHmacSha256Signature(Utilities.newBlob(toSign).getBytes(),kSigning));
 return {"x-amz-date":amz,Authorization:"AWS4-HMAC-SHA256 Credential="+c.accessKey+"/"+scope+",SignedHeaders="+signed+",Signature="+signature}
 ;} function sqlQuery_(q) {return q?q.split("&").map(x=>x.split("=").map(encodeURIComponent).join("=")).sort().join("&"):"";
+} function sqlIsRateLimit_(err) {return /SQL API 429|Too many requests/i.test(err&&err.message||String(err));
 } function sqlHex_(bytes) {return bytes.map(x=>("0"+(x&255).toString(16)).slice(-2)).join("");
 } function sqlUploadAmount_(inv) {const paid=Number(inv["Paid Amount RM"]||0),rm=isRmCurrency(inv.Currency);
 if (!rm&&paid<=0) throw new Error("Actual received RM is required before SQL upload.");

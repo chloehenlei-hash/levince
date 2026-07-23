@@ -9,6 +9,8 @@
 - Follow-up hardening: direct Sales Invoice creation now tries clean insert detail rows first by omitting detail `dockey/dtlkey`, then falls back to `dtlkey = -1`, then a master `dockey = -1` variant if SQL Account still rejects the insert.
 - Each retry checks the same `docref1` before and after POST so a successful-but-erroring SQL response does not create duplicate invoices.
 - Apps Script paste fix: renamed repeated local `api` constants to distinct names because the Apps Script editor reported `Identifier 'api' has already been declared`.
+- SQL API 429 hardening: raw nginx `Too Many Requests` HTML is now converted into a short wait-and-retry message, and Sales Invoice fallback stops immediately on rate limit instead of sending more requests.
+- Reduced duplicate invoice lookup calls inside one create attempt while keeping the `docref1` duplicate guard.
 - Ran Apps Script syntax checks for `apps-script/Code.gs`, `apps-script/SqlApi.gs`, and `apps-script/Scheduler.gs`.
 
 ## Direct SQL Auto Customer Lookup - 2026-07-23
