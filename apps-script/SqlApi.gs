@@ -1,20 +1,24 @@
 const SQL_API_DEFAULTS = { host: "https://api.sql.my", region: "ap-southeast-5", service: "sqlaccount" };
 
-function sqlApiConfig_() {
+function sqlApiConfig_(prefix) {
+  prefix = prefix || "";
   const p = PropertiesService.getScriptProperties();
   return {
-    host: (p.getProperty("SQL_API_HOST") || SQL_API_DEFAULTS.host).replace(/\/+$/, ""),
-    region: p.getProperty("SQL_API_REGION") || SQL_API_DEFAULTS.region,
-    service: p.getProperty("SQL_API_SERVICE") || SQL_API_DEFAULTS.service,
-    accessKey: (p.getProperty("SQL_API_ACCESS_KEY") || "").trim(),
-    secretKey: (p.getProperty("SQL_API_SECRET_KEY") || "").trim()
+    host: (p.getProperty(prefix + "SQL_API_HOST") || SQL_API_DEFAULTS.host).replace(/\/+$/, ""),
+    region: p.getProperty(prefix + "SQL_API_REGION") || SQL_API_DEFAULTS.region,
+    service: p.getProperty(prefix + "SQL_API_SERVICE") || SQL_API_DEFAULTS.service,
+    accessKey: (p.getProperty(prefix + "SQL_API_ACCESS_KEY") || "").trim(),
+    secretKey: (p.getProperty(prefix + "SQL_API_SECRET_KEY") || "").trim()
   };
 }
 
-function sqlConnectionStatus() {
-  const c = sqlApiConfig_();
+function sqlConnectionStatus() { return sqlConnectionStatusFor_(""); }
+function vincenologySqlConnectionStatus() { return sqlConnectionStatusFor_("VINCENOLOGY_"); }
+
+function sqlConnectionStatusFor_(prefix) {
+  const c = sqlApiConfig_(prefix);
   if (!c.accessKey || !c.secretKey) return { ok: false, configured: false, error: "SQL API keys are not configured." };
-  const r = sqlApiRequest_("GET", "/version");
+  const r = sqlApiRequest_("GET", "/version", null, false, c);
   return { ok: true, configured: true, status: r.status, data: r.data };
 }
 
@@ -181,8 +185,8 @@ function sqlFindObject_(v) {
   return null;
 }
 
-function sqlApiRequest_(method, path, body, allow404) {
-  const c = sqlApiConfig_();
+function sqlApiRequest_(method, path, body, allow404, config) {
+  const c = config || sqlApiConfig_();
   if (!c.accessKey || !c.secretKey) throw new Error("SQL API keys are not configured in Script Properties.");
   const url = c.host + path, payload = body == null ? "" : JSON.stringify(body);
   const headers = sqlSign_(method, url, payload, c);

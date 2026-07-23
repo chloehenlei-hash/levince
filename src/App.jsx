@@ -260,6 +260,8 @@ export default function App() {
   const [sqlSyncInfo, setSqlSyncInfo] = useState(null);
   const [selectedSqlInvoiceIds, setSelectedSqlInvoiceIds] = useState([]);
   const [retryingOrId, setRetryingOrId] = useState("");
+  const [vincenologyStatus, setVincenologyStatus] = useState(null);
+  const [testingVincenology, setTestingVincenology] = useState(false);
 
   const paidQueue = useMemo(
     () => invoices.filter((invoice) => invoice.Status === "Paid" && invoice["SQL Status"] !== "Uploaded to SQL"),
@@ -514,6 +516,19 @@ export default function App() {
       setMessage(`OR retry failed for ${invoiceNo}: ${error.message}`);
     } finally {
       setRetryingOrId("");
+    }
+  }
+
+  async function testVincenologyApi() {
+    setTestingVincenology(true);
+    setVincenologyStatus({ ok: null, message: "Testing Vincenology SQL API..." });
+    try {
+      const data = await callWorkflowApi("vincenologySqlConnectionStatus");
+      setVincenologyStatus({ ok: true, message: `Connected. SQL API status ${data.status || "OK"}.` });
+    } catch (error) {
+      setVincenologyStatus({ ok: false, message: error.message });
+    } finally {
+      setTestingVincenology(false);
     }
   }
 
@@ -893,6 +908,24 @@ export default function App() {
               with the current LeVince SQL upload queue. The invoice PDF can be made in SQL style once we have one
               sample SQL invoice PDF or confirmed SQL report output from the API.
             </p>
+            <div className="workflow-row-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={testVincenologyApi}
+                disabled={testingVincenology}
+              >
+                {testingVincenology ? "Testing..." : "Test Vincenology API"}
+              </button>
+            </div>
+            {vincenologyStatus ? (
+              <div className={`sql-sync-card ${vincenologyStatus.ok === false ? "is-error" : "is-ok"}`}>
+                <div>
+                  <span>API status</span>
+                  <strong>{vincenologyStatus.message}</strong>
+                </div>
+              </div>
+            ) : null}
           </section>
         </main>
       ) : null}

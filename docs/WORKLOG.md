@@ -1,5 +1,13 @@
 # Worklog
 
+## Vincenology API Setup Start - 2026-07-23
+
+- Added a separate Apps Script API connection check for the `Vincenology SDN BHD` SQL account.
+- The second account uses its own Script Properties with `VINCENOLOGY_` prefixes, so it will not reuse or overwrite LeVince's SQL API keys.
+- Added a `Test Vincenology API` button on the `Vincenology SDN BHD` page.
+- Ran Apps Script syntax checks for `Code.gs`, `SqlApi.gs`, and `Scheduler.gs`.
+- Ran production build successfully; current generated assets include `dist/assets/index-D23YHiNv.js` and `dist/assets/pdf-BGnqX8DU.js`.
+
 ## Second SQL Account Rename - 2026-07-23
 
 - Renamed the second SQL account page/navigation label from `Financial Jasonurian Berhad` to `Vincenology SDN BHD`.
