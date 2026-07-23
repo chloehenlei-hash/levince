@@ -257,6 +257,7 @@ export default function App() {
   const [reopeningNo, setReopeningNo] = useState("");
   const [paymentSlipFiles, setPaymentSlipFiles] = useState({});
   const [sqlSyncInfo, setSqlSyncInfo] = useState(null);
+  const [selectedSqlInvoiceIds, setSelectedSqlInvoiceIds] = useState([]);
 
   const paidQueue = useMemo(
     () => invoices.filter((invoice) => invoice.Status === "Paid" && invoice["SQL Status"] !== "Uploaded to SQL"),
@@ -277,6 +278,10 @@ export default function App() {
   const uploadablePendingQueue = useMemo(
     () => pendingSqlConfirmQueue.filter((invoice) => isRmCurrency(invoice.Currency)),
     [pendingSqlConfirmQueue],
+  );
+  const selectedSqlUploadQueue = useMemo(
+    () => uploadablePendingQueue.filter((invoice) => selectedSqlInvoiceIds.includes(String(invoice["Invoice ID"]))),
+    [selectedSqlInvoiceIds, uploadablePendingQueue],
   );
   const monthOptions = useMemo(() => {
     const keys = new Set([currentMonthKey()]);
@@ -310,6 +315,15 @@ export default function App() {
   useEffect(() => {
     loadInvoices();
   }, []);
+
+  useEffect(() => {
+    const validIds = uploadablePendingQueue.map((invoice) => String(invoice["Invoice ID"]));
+    setSelectedSqlInvoiceIds((current) => {
+      if (!validIds.length) return [];
+      const stillValid = current.filter((id) => validIds.includes(id));
+      return stillValid.length ? stillValid : validIds;
+    });
+  }, [uploadablePendingQueue]);
 
   async function loadInvoices() {
     try {
@@ -443,21 +457,28 @@ export default function App() {
       setMessage(`${readySqlQueue.length} invoice(s) already confirmed for scheduled SQL upload.`);
       return;
     }
-    const count = uploadablePendingQueue.length;
+    if (!selectedSqlUploadQueue.length) {
+      setMessage("Choose at least one RM invoice to confirm for SQL upload.");
+      return;
+    }
+    const count = selectedSqlUploadQueue.length;
+    const pending = uploadablePendingQueue.length - count;
     const skipped = blockedCurrencyQueue.length ? `\n\n${blockedCurrencyQueue.length} non-RM invoice(s) will be skipped for now.` : "";
-    if (!window.confirm(`Confirm ${count} paid RM invoice(s) for scheduled SQL API upload?${skipped}`)) return;
+    const leftPending = pending > 0 ? `\n\n${pending} RM invoice(s) will stay pending.` : "";
+    if (!window.confirm(`Confirm ${count} selected paid RM invoice(s) for scheduled SQL API upload?${leftPending}${skipped}`)) return;
     try {
       setInvoices((current) => current.map((invoice) => (
-        uploadablePendingQueue.some((row) => row["Invoice ID"] === invoice["Invoice ID"])
+        selectedSqlUploadQueue.some((row) => row["Invoice ID"] === invoice["Invoice ID"])
           ? { ...invoice, "SQL Status": "Ready for SQL", "SQL API Error": "" }
           : invoice
       )));
       const data = await callWorkflowApi("confirmSqlUpload", {
-        invoiceIds: uploadablePendingQueue.map((invoice) => invoice["Invoice ID"]),
+        invoiceIds: selectedSqlUploadQueue.map((invoice) => invoice["Invoice ID"]),
       });
       await loadInvoices();
       const skipText = blockedCurrencyQueue.length ? ` ${blockedCurrencyQueue.length} non-RM invoice(s) were left untouched.` : "";
-      setMessage(`${data.count || 0} invoice(s) confirmed. Waiting for ${nextSqlRunLabel()} SQL API upload.${skipText}`);
+      const pendingText = pending > 0 ? ` ${pending} invoice(s) stayed pending.` : "";
+      setMessage(`${data.count || 0} selected invoice(s) confirmed. Waiting for ${nextSqlRunLabel()} SQL API upload.${pendingText}${skipText}`);
     } catch (error) {
       await loadInvoices();
       setMessage(error.message);
@@ -677,8 +698,8 @@ export default function App() {
           <section className="sql-command-panel">
             <div className="workflow-stats sql-status-grid">
               <div>
-                <span>Need confirm</span>
-                <strong>{uploadablePendingQueue.length}</strong>
+                <span>Selected</span>
+                <strong>{selectedSqlUploadQueue.length}/{uploadablePendingQueue.length}</strong>
               </div>
               <div>
                 <span>Waiting upload</span>
@@ -692,7 +713,7 @@ export default function App() {
             <div className={`sql-sync-card ${sqlSyncInfo?.failed?.length ? "is-error" : "is-ok"}`}>
               <div>
                 <span>Current status</span>
-                <strong>{sqlStatusText(sqlSyncInfo, uploadablePendingQueue.length, readySqlQueue.length)}</strong>
+                <strong>{sqlStatusText(sqlSyncInfo, selectedSqlUploadQueue.length || uploadablePendingQueue.length, readySqlQueue.length)}</strong>
               </div>
               {readySqlQueue.length ? <p>Confirmed invoices will upload automatically during the next quiet SQL window.</p> : null}
               {sqlSyncInfo?.uploaded?.length ? (
@@ -707,10 +728,26 @@ export default function App() {
                 type="button"
                 className={`primary-button ${!uploadablePendingQueue.length && readySqlQueue.length ? "is-copied" : ""}`}
                 onClick={confirmScheduledUpload}
-                disabled={!uploadablePendingQueue.length}
+                disabled={!selectedSqlUploadQueue.length}
               >
                 <CheckCircle2 aria-hidden="true" />
-                {!uploadablePendingQueue.length && readySqlQueue.length ? "Waiting for API" : "Confirm Upload"}
+                {!uploadablePendingQueue.length && readySqlQueue.length ? "Waiting for API" : "Confirm Selected"}
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setSelectedSqlInvoiceIds(uploadablePendingQueue.map((invoice) => String(invoice["Invoice ID"])))}
+                disabled={!uploadablePendingQueue.length}
+              >
+                Select All RM
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setSelectedSqlInvoiceIds([])}
+                disabled={!selectedSqlUploadQueue.length}
+              >
+                Leave All Pending
               </button>
               <button type="button" className="secondary-button" onClick={loadSqlSyncStatus}>Refresh Status</button>
             </div>
@@ -731,6 +768,7 @@ export default function App() {
               <table className="workflow-table">
                 <thead>
                   <tr>
+                    <th>Upload</th>
                     <th>No.</th>
                     <th>Customer</th>
                     <th>Date</th>
@@ -741,8 +779,33 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {paidQueue.length ? [...paidQueue].sort(sortInvoicesByLatest).map((invoice) => (
-                    <tr key={invoice["Invoice ID"]}>
+                  {paidQueue.length ? [...paidQueue].sort(sortInvoicesByLatest).map((invoice) => {
+                    const id = String(invoice["Invoice ID"] || "");
+                    const isReady = invoice["SQL Status"] === "Ready for SQL";
+                    const canSelect = invoice["SQL Status"] !== "Ready for SQL" && isRmCurrency(invoice.Currency);
+                    const isSelected = selectedSqlInvoiceIds.includes(id);
+                    return (
+                    <tr key={invoice["Invoice ID"]} className={!canSelect && !isReady ? "workflow-row-muted" : ""}>
+                      <td>
+                        {isReady ? (
+                          <span className="sql-upload-note">Waiting</span>
+                        ) : (
+                          <label className={`sql-select-control ${isSelected ? "is-selected" : ""} ${!canSelect ? "is-disabled" : ""}`}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              disabled={!canSelect}
+                              onChange={(event) => {
+                                setSelectedSqlInvoiceIds((current) => {
+                                  if (event.target.checked) return [...new Set([...current, id])];
+                                  return current.filter((value) => value !== id);
+                                });
+                              }}
+                            />
+                            <span>{canSelect ? (isSelected ? "Yes" : "Pending") : "Hold"}</span>
+                          </label>
+                        )}
+                      </td>
                       <td><strong>{invoice["Internal Invoice No"]}</strong></td>
                       <td>{invoice["Customer Name"]}</td>
                       <td>{displayDate(invoice["Invoice Date"])}</td>
@@ -751,8 +814,9 @@ export default function App() {
                       <td>{invoice["SQL Payment Doc No"] || ""}</td>
                       <td>{invoice["SQL API Error"] || ""}</td>
                     </tr>
-                  )) : (
-                    <tr><td colSpan="7" className="workflow-empty">No paid invoices waiting for SQL.</td></tr>
+                    );
+                  }) : (
+                    <tr><td colSpan="8" className="workflow-empty">No paid invoices waiting for SQL.</td></tr>
                   )}
                 </tbody>
               </table>

@@ -7,6 +7,8 @@
 - Added the same RM/MYR guard in `apps-script/Code.gs` `confirmSqlUpload`, so live backend will skip foreign-currency invoices even if they are accidentally passed from the website.
 - Ran Apps Script syntax checks for `Code.gs`, `SqlApi.gs`, and `Scheduler.gs`.
 - Ran production build successfully; current generated assets include `dist/assets/index-DY2TjKIC.js` and `dist/assets/pdf-DD-NTFMn.js`.
+- Added per-invoice SQL upload selection on the SQL Upload page. RM/MYR paid invoices are selectable, unselected rows stay pending, already-confirmed rows show `Waiting`, and non-RM rows show `Hold`.
+- Added `Select All RM` and `Leave All Pending` controls so Chloe can decide exactly which invoices to confirm for scheduled API upload.
 
 ## Payment Slip Upload + SQL Payment Check - 2026-07-17
 

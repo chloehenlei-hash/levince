@@ -1255,7 +1255,7 @@ textarea:focus {
 
 .workflow-table {
   width: 100%;
-  min-width: 860px;
+  min-width: 960px;
   border-collapse: collapse;
 }
 
@@ -1284,6 +1284,59 @@ textarea:focus {
 
 .workflow-row-paid td:first-child {
   box-shadow: inset 4px 0 0 #3aa96c;
+}
+
+.workflow-row-muted td {
+  color: #77797d;
+  background: #fffaf6;
+}
+
+.sql-select-control {
+  display: inline-flex;
+  min-width: 88px;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #ead5bd;
+  border-radius: 999px;
+  background: #fffaf3;
+  color: #9a6500;
+  font-size: 0.78rem;
+  font-weight: 820;
+  cursor: pointer;
+  user-select: none;
+}
+
+.sql-select-control input {
+  width: 16px;
+  height: 16px;
+  accent-color: #2f9f66;
+}
+
+.sql-select-control.is-selected {
+  border-color: #9fd6b8;
+  background: #effbf4;
+  color: #237a4b;
+}
+
+.sql-select-control.is-disabled {
+  border-color: #ddd5cf;
+  background: #f7f3ef;
+  color: #77797d;
+  cursor: not-allowed;
+}
+
+.sql-upload-note {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0 10px;
+  background: #dff5e9;
+  color: #176a43;
+  font-size: 0.78rem;
+  font-weight: 820;
 }
 
 .workflow-status {
