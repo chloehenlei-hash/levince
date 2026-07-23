@@ -875,9 +875,10 @@ export default function App() {
     }));
     try {
       const data = await callWorkflowApi(config.apiAction);
+      const versionText = data.backendVersion ? ` Backend ${data.backendVersion}.` : "";
       setDirectResults((current) => ({
         ...current,
-        [accountKey]: { ok: true, message: `Connected. SQL API status ${data.status || "OK"}.` },
+        [accountKey]: { ok: true, message: `Connected. SQL API status ${data.status || "OK"}.${versionText}` },
       }));
     } catch (error) {
       setDirectResults((current) => ({

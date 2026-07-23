@@ -3,8 +3,11 @@
 ## Direct SQL Sales Invoice Insert Payload Fix - 2026-07-23
 
 - Chloe provided SQL Account's official `postman_collection.json`; the `Create Invoice` sample for `POST /salesinvoice` uses a full document dataset payload, not the smaller payload previously sent by the website.
+- The repeated plain `MainDataSet: Dataset not in edit or insert mode` error was likely happening before Sales Invoice creation when a new SQL customer had to be created; `POST /customer` was still using a shortened payload.
+- Updated `sqlCustomerPayload_` to follow the official `Create Customer` sample shape, including `companyname2`, `biznature`, `outstanding`, tax/e-invoice fields, `sdscreditcontrol`, `sdsbankacc`, and `sdstariff`.
 - Updated `sqlInvoicePayload_` and `sqlDetail_` to follow the official sample shape, including master fields such as `docnoex`, e-invoice timestamps, `status`, `updatecount`, `transferable`, `docnosetkey`, and detail fields such as `styleid`, `number`, `deliverydate`, `fromdoctype`, serial rows, and tax amount variants.
 - Sales Invoice creation now tries the full Postman-style payload first, then falls back to the previous lean variants only if SQL Account rejects it.
+- Added backend version marker `sql-postman-customer-20260723` to SQL connection tests and direct create errors so Chloe can confirm whether the deployed Apps Script Web App is running the latest backend.
 - Fixed the SQL Direct and Vincenology Sales Invoice create payload after SQL Account returned `MainDataSet: Dataset not in edit or insert mode`.
 - Sales Invoice POST requests now pass through `sqlInsertDocPayload_`, which removes empty master `docno/dockey` values before insert.
 - Sales Invoice detail rows now use `dtlkey = -1` and `dockey = -1` for insert mode, matching SQL Account API guidance that insert detail rows should omit `dtlkey` or use `-1`.
