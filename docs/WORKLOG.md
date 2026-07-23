@@ -1,5 +1,14 @@
 # Worklog
 
+## SQL Customer Name Resolution - 2026-07-23
+
+- Fixed SQL API upload customer handling after live upload failed with `Customer ... not found`.
+- The SQL upload flow now resolves customer by SQL code first, then tries name-based SQL customer lookups before creating a new customer profile.
+- SQL API `400 ... not found` responses are now treated as not-found during lookup, instead of stopping the upload immediately.
+- When an existing or newly created SQL customer is resolved, the actual SQL customer code is written back to both the customer archive and the invoice row.
+- The same customer resolution now runs for both scheduled invoice upload and `Retry OR`.
+- Apps Script syntax check passed for `Code.gs`, `SqlApi.gs`, and `Scheduler.gs`.
+
 ## Vincenology API Setup Start - 2026-07-23
 
 - Added a separate Apps Script API connection check for the `Vincenology SDN BHD` SQL account.

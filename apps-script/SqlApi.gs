@@ -31,10 +31,10 @@ function sqlSyncPaidInvoices() {
     try {
       const currency = String(inv.Currency || "RM").toUpperCase();
       if (currency !== "RM" && currency !== "MYR") throw new Error("Foreign currency needs an exchange rate before SQL upload.");
-      const c = cm[ckey(inv["Customer Name"])];
+      let c = cm[ckey(inv["Customer Name"])];
       if (!c) throw new Error("Customer record is missing.");
-      sqlEnsureCustomer_(c, s);
-      if (c.Status !== "Uploaded") markCustomersUploaded({ user: "SQL API", customerKeys: [c["Customer Key"]] });
+      c = sqlResolveCustomer_(c, s);
+      updateInv(inv["Invoice ID"], { "SQL Customer Code": c["SQL Customer Code"], "Updated At": now() });
       const lookup = "/salesinvoice?docref1=" + encodeURIComponent(inv["Internal Invoice No"]);
       const existing = sqlFindDoc_(lookup);
       const api = existing || sqlApiRequest_("POST", "/salesinvoice", sqlInvoicePayload_(inv, allItems, c, s)).data;
@@ -60,10 +60,11 @@ function retrySqlPayment(q) {
   setup();
   const f = findInv(q.invoiceId), inv = f.inv, s = settings();
   if (!isRmCurrency(inv.Currency)) throw new Error("Only RM invoices can create OR automatically for now.");
-  const customers = syncCustomers([inv], s), c = custMap(customers)[ckey(inv["Customer Name"])];
+  const customers = syncCustomers([inv], s);
+  let c = custMap(customers)[ckey(inv["Customer Name"])];
   if (!c) throw new Error("Customer record is missing.");
-  sqlEnsureCustomer_(c, s);
-  if (c.Status !== "Uploaded") markCustomersUploaded({ user: "SQL API", customerKeys: [c["Customer Key"]] });
+  c = sqlResolveCustomer_(c, s);
+  updateInv(inv["Invoice ID"], { "SQL Customer Code": c["SQL Customer Code"], "Updated At": now() });
   const lookup = "/salesinvoice?docref1=" + encodeURIComponent(inv["Internal Invoice No"]);
   const existing = sqlFindDoc_(lookup);
   const api = existing || sqlApiRequest_("POST", "/salesinvoice", sqlInvoicePayload_(inv, rows(T.item), c, s)).data;
@@ -91,11 +92,70 @@ function sqlEnsureCustomerPayment_(inv, c, invoiceDoc, s) {
   return sqlFindObject_(created) || sqlFindDoc_("/customerpayment?docref1=" + encodeURIComponent(ref)) || {};
 }
 
-function sqlEnsureCustomer_(c, s) {
-  const path = "/customer/" + encodeURIComponent(c["SQL Customer Code"]);
-  const found = sqlApiRequest_("GET", path, null, true);
-  if (found.status !== 404) return found.data;
-  return sqlApiRequest_("POST", "/customer", sqlCustomerPayload_(c, s)).data;
+function sqlResolveCustomer_(c, s) {
+  let found = null;
+  const oldCode = String(c["SQL Customer Code"] || "").trim();
+  if (oldCode) found = sqlFindCustomerByCode_(oldCode);
+  if (!found) found = sqlFindCustomerByName_(c["Customer Name"]);
+  if (!found) {
+    const created = sqlApiRequest_("POST", "/customer", sqlCustomerPayload_(c, s)).data;
+    found = sqlFindCustomerObject_(created, c["Customer Name"], oldCode) || sqlFindCustomerByCode_(oldCode);
+  }
+  const code = sqlCustomerCode_(found) || oldCode;
+  if (!code) throw new Error("Customer was created/found, but SQL customer code is missing.");
+  return sqlPatchCustomer_(c, {
+    "SQL Customer Code": code,
+    Status: "Uploaded",
+    "Uploaded At": now(),
+    "Uploaded By": "SQL API",
+    "Updated At": now()
+  });
+}
+
+function sqlFindCustomerByCode_(code) {
+  if (!code) return null;
+  const r = sqlApiRequest_("GET", "/customer/" + encodeURIComponent(code), null, true);
+  if (r.status < 200 || r.status >= 300) return null;
+  return sqlFlattenObjects_(r.data).find(x => sqlCustomerCode_(x) === code) || null;
+}
+
+function sqlFindCustomerByName_(name) {
+  const target = sqlNorm_(name);
+  if (!target) return null;
+  const paths = [
+    "/customer?companyname=" + encodeURIComponent(name),
+    "/customer?search=" + encodeURIComponent(name),
+    "/customer?keyword=" + encodeURIComponent(name)
+  ];
+  for (let i = 0; i < paths.length; i++) {
+    try {
+      const r = sqlApiRequest_("GET", paths[i], null, true);
+      const exact = sqlFindCustomerObject_(r.data, name, "");
+      if (exact) return exact;
+    } catch (_) {}
+  }
+  return null;
+}
+
+function sqlPatchCustomer_(c, patch) {
+  const sh = ss().getSheetByName(T.cust), vals = sh.getDataRange().getValues(), h = vals[0];
+  const keyIx = h.indexOf("Customer Key"), key = String(c["Customer Key"] || "");
+  for (let r = 1; r < vals.length; r++) if (String(vals[r][keyIx]) === key) {
+    Object.keys(patch).forEach(k => { const i = h.indexOf(k); if (i >= 0) vals[r][i] = patch[k]; c[k] = patch[k]; });
+    sh.getRange(r + 1, 1, 1, h.length).setValues([vals[r]]);
+    return c;
+  }
+  Object.keys(patch).forEach(k => c[k] = patch[k]);
+  return c;
+}
+
+function sqlFindCustomerObject_(data, name, code) {
+  const target = sqlNorm_(name), wantCode = String(code || "").trim();
+  return sqlFlattenObjects_(data).find(x => {
+    const foundCode = sqlCustomerCode_(x);
+    const foundName = sqlNorm_(x.companyname || x.COMPANYNAME || x.name || x.Name || x.companyName || x.CompanyName);
+    return (wantCode && foundCode === wantCode) || (target && foundName === target);
+  }) || null;
 }
 
 function sqlCustomerPayload_(c, s) {
@@ -185,6 +245,24 @@ function sqlFindObject_(v) {
   return null;
 }
 
+function sqlFlattenObjects_(v, out) {
+  out = out || [];
+  if (!v || typeof v !== "object") return out;
+  if (!Array.isArray(v)) out.push(v);
+  const values = Array.isArray(v) ? v : Object.keys(v).map(k => v[k]);
+  values.forEach(x => sqlFlattenObjects_(x, out));
+  return out;
+}
+
+function sqlCustomerCode_(v) {
+  if (!v || typeof v !== "object") return "";
+  return String(v.code || v.Code || v.CODE || v.customerCode || v.CustomerCode || v["CODE(10)"] || "").trim();
+}
+
+function sqlNorm_(v) {
+  return String(v || "").trim().replace(/\s+/g, " ").toUpperCase();
+}
+
 function sqlApiRequest_(method, path, body, allow404, config) {
   const c = config || sqlApiConfig_();
   if (!c.accessKey || !c.secretKey) throw new Error("SQL API keys are not configured in Script Properties.");
@@ -194,7 +272,11 @@ function sqlApiRequest_(method, path, body, allow404, config) {
   if (body != null) { options.contentType = "application/json"; options.payload = payload; }
   const res = UrlFetchApp.fetch(url, options), status = res.getResponseCode(), text = res.getContentText();
   let data = text; try { data = text ? JSON.parse(text) : {}; } catch (_) {}
-  if (status < 200 || status >= 300) { if (allow404 && status === 404) return { status: status, data: data }; throw new Error("SQL API " + status + ": " + (typeof data === "string" ? data : JSON.stringify(data))); }
+  if (status < 200 || status >= 300) {
+    const msg = typeof data === "string" ? data : JSON.stringify(data);
+    if (allow404 && (status === 404 || /not found/i.test(msg))) return { status: status, data: data };
+    throw new Error("SQL API " + status + ": " + msg);
+  }
   return { status: status, data: data };
 }
 
