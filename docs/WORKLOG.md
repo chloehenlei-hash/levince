@@ -7,6 +7,9 @@
 - Direct SQL auto lookup now only auto-selects exact customer matches; fuzzy or unrelated results remain selectable but are not applied automatically.
 - Quick paste clears an old SQL Customer Code when the parsed customer/company name changes.
 - Added backend marker `sql-direct-customer-match-20260723`.
+- Added customer-create fallback variants after SQL Account rejected `POST /customer` with `MainDataSet: Dataset not in edit or insert mode`.
+- Customer creation now tries flat master-only payloads, blank-code Postman-style payloads, child-row changed payloads, previous variants, and a final PUT-by-code fallback; after every failed POST it searches again by customer name in case SQL created the record but returned 500.
+- Added backend marker `sql-direct-customer-insert-20260723`.
 - Split Direct SQL customer handling from invoice creation on both SQL Direct and Vincenology pages.
 - Added `sqlDirectEnsureCustomer` Apps Script action so the website can confirm an existing SQL customer code or create a new SQL customer before invoice creation.
 - Customer cards now show a green ready state after the SQL customer is confirmed; editing customer fields clears that ready state.
