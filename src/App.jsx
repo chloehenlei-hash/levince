@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Building2, CheckCircle2, ClipboardList, Database, FilePlus2, Paperclip } from "lucide-react";
+import { Building2, CheckCircle2, ClipboardList, CreditCard, Database, FilePlus2, Paperclip, ReceiptText } from "lucide-react";
 import InvoiceGenerator from "./InvoiceGenerator.jsx";
 import { callWorkflowApi } from "./workflowApi.js";
 
@@ -7,8 +7,26 @@ const NAV_ITEMS = [
   { key: "new", label: "New Invoice", icon: FilePlus2 },
   { key: "invoices", label: "Invoices", icon: ClipboardList },
   { key: "sql", label: "SQL Upload", icon: Database },
+  { key: "sql-direct", label: "SQL Direct", icon: ReceiptText },
   { key: "financial", label: "Vincenology SDN BHD", icon: Building2 },
 ];
+
+const DIRECT_SQL_ACCOUNTS = {
+  levince: {
+    title: "SQL Direct",
+    eyebrow: "LeVince SQL account",
+    description: "Create a Sales Invoice and Customer Payment / OR directly through the first SQL API account.",
+    accent: "Direct API",
+    apiAction: "sqlConnectionStatus",
+  },
+  vincenology: {
+    title: "Vincenology SDN BHD",
+    eyebrow: "Vincenology SQL account",
+    description: "Create a Sales Invoice and Customer Payment / OR through the Vincenology SQL API credentials.",
+    accent: "Vincenology API",
+    apiAction: "vincenologySqlConnectionStatus",
+  },
+};
 
 const MONTH_NAMES = [
   "January",
@@ -32,6 +50,15 @@ function padMonth(value) {
 function currentMonthKey() {
   const today = new Date();
   return `${today.getFullYear()}-${padMonth(today.getMonth() + 1)}`;
+}
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function directReference() {
+  const now = new Date();
+  return `WEB-${now.getFullYear()}${padMonth(now.getMonth() + 1)}${padMonth(now.getDate())}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
 }
 
 function money(value, currency = "RM") {
@@ -243,6 +270,28 @@ function fileToProof(file) {
   });
 }
 
+function createDirectForm() {
+  return {
+    docRef: directReference(),
+    customerName: "",
+    sqlCustomerCode: "",
+    customerPhone: "",
+    customerEmail: "",
+    billingAddress: "",
+    tin: "",
+    idType: "0",
+    idNo: "",
+    invoiceDate: todayKey(),
+    terms: "C.O.D.",
+    description: "LeVince Chauffeur Service",
+    quantity: "1",
+    uom: "UNIT",
+    amount: "",
+    paymentDate: todayKey(),
+    paymentRef: "",
+  };
+}
+
 export default function App() {
   const [view, setView] = useState("new");
   const [message, setMessage] = useState("");
@@ -261,8 +310,12 @@ export default function App() {
   const [sqlSyncInfo, setSqlSyncInfo] = useState(null);
   const [selectedSqlInvoiceIds, setSelectedSqlInvoiceIds] = useState([]);
   const [retryingOrId, setRetryingOrId] = useState("");
-  const [vincenologyStatus, setVincenologyStatus] = useState(null);
-  const [testingVincenology, setTestingVincenology] = useState(false);
+  const [directForms, setDirectForms] = useState({
+    levince: createDirectForm(),
+    vincenology: createDirectForm(),
+  });
+  const [directBusy, setDirectBusy] = useState("");
+  const [directResults, setDirectResults] = useState({});
 
   const paidQueue = useMemo(
     () => invoices.filter((invoice) => invoice.Status === "Paid" && invoice["SQL Status"] !== "Uploaded to SQL"),
@@ -533,21 +586,295 @@ export default function App() {
     }
   }
 
-  async function testVincenologyApi() {
-    setTestingVincenology(true);
-    setVincenologyStatus({ ok: null, message: "Testing Vincenology SQL API..." });
+  function updatePaymentInput(invoiceId, patch) {
+    setPaymentInputs((current) => ({ ...current, [invoiceId]: { ...(current[invoiceId] || {}), ...patch } }));
+  }
+
+  function updateDirectForm(accountKey, patch) {
+    setDirectForms((current) => ({
+      ...current,
+      [accountKey]: { ...(current[accountKey] || createDirectForm()), ...patch },
+    }));
+  }
+
+  function directPayload(accountKey) {
+    const form = directForms[accountKey] || createDirectForm();
+    const amount = parseAmount(form.amount);
+    if (!textValue(form.customerName)) {
+      setMessage("Customer name is required before creating a SQL invoice.");
+      return null;
+    }
+    if (amount <= 0) {
+      setMessage("Amount must be more than RM 0.00 before creating a SQL invoice.");
+      return null;
+    }
+    return {
+      account: accountKey,
+      docRef: textValue(form.docRef) || directReference(),
+      customer: {
+        customerName: textValue(form.customerName),
+        sqlCustomerCode: textValue(form.sqlCustomerCode),
+        customerPhone: textValue(form.customerPhone),
+        customerEmail: textValue(form.customerEmail),
+        billingAddress: textValue(form.billingAddress),
+        tin: textValue(form.tin),
+        idType: textValue(form.idType) || "0",
+        idNo: textValue(form.idNo),
+      },
+      invoice: {
+        invoiceDate: form.invoiceDate || todayKey(),
+        terms: textValue(form.terms) || "C.O.D.",
+        description: textValue(form.description) || "LeVince Chauffeur Service",
+        quantity: parseAmount(form.quantity) || 1,
+        uom: textValue(form.uom) || "UNIT",
+        amount,
+      },
+      payment: {
+        paymentDate: form.paymentDate || form.invoiceDate || todayKey(),
+        paymentRef: textValue(form.paymentRef),
+      },
+    };
+  }
+
+  async function testDirectApi(accountKey) {
+    const config = DIRECT_SQL_ACCOUNTS[accountKey];
+    setDirectBusy(`${accountKey}:test`);
+    setDirectResults((current) => ({
+      ...current,
+      [accountKey]: { ok: null, message: `Testing ${config.accent}...` },
+    }));
     try {
-      const data = await callWorkflowApi("vincenologySqlConnectionStatus");
-      setVincenologyStatus({ ok: true, message: `Connected. SQL API status ${data.status || "OK"}.` });
+      const data = await callWorkflowApi(config.apiAction);
+      setDirectResults((current) => ({
+        ...current,
+        [accountKey]: { ok: true, message: `Connected. SQL API status ${data.status || "OK"}.` },
+      }));
     } catch (error) {
-      setVincenologyStatus({ ok: false, message: error.message });
+      setDirectResults((current) => ({
+        ...current,
+        [accountKey]: { ok: false, message: error.message },
+      }));
     } finally {
-      setTestingVincenology(false);
+      setDirectBusy("");
     }
   }
 
-  function updatePaymentInput(invoiceId, patch) {
-    setPaymentInputs((current) => ({ ...current, [invoiceId]: { ...(current[invoiceId] || {}), ...patch } }));
+  async function createDirectSqlInvoice(accountKey) {
+    const payload = directPayload(accountKey);
+    if (!payload) return;
+    setDirectBusy(`${accountKey}:invoice`);
+    setMessage(`Creating SQL invoice for ${payload.customer.customerName}...`);
+    try {
+      const data = await callWorkflowApi("sqlDirectCreateInvoice", payload);
+      setDirectResults((current) => ({
+        ...current,
+        [accountKey]: {
+          ok: true,
+          message: `SQL invoice ready${data.sqlDocNo ? `: ${data.sqlDocNo}` : ""}.`,
+          data,
+        },
+      }));
+      updateDirectForm(accountKey, { docRef: data.docRef || payload.docRef });
+      setMessage(`SQL invoice created${data.sqlDocNo ? `: ${data.sqlDocNo}` : ""}.`);
+    } catch (error) {
+      setDirectResults((current) => ({
+        ...current,
+        [accountKey]: { ok: false, message: error.message },
+      }));
+      setMessage(error.message);
+    } finally {
+      setDirectBusy("");
+    }
+  }
+
+  async function createDirectSqlPayment(accountKey) {
+    const payload = directPayload(accountKey);
+    if (!payload) return;
+    setDirectBusy(`${accountKey}:payment`);
+    setMessage(`Creating Customer Payment / OR for ${payload.docRef}...`);
+    try {
+      const data = await callWorkflowApi("sqlDirectCreatePayment", payload);
+      setDirectResults((current) => ({
+        ...current,
+        [accountKey]: {
+          ok: true,
+          message: `OR ready${data.sqlPaymentDocNo ? `: ${data.sqlPaymentDocNo}` : ""}.`,
+          data,
+        },
+      }));
+      setMessage(`Customer Payment / OR created${data.sqlPaymentDocNo ? `: ${data.sqlPaymentDocNo}` : ""}.`);
+    } catch (error) {
+      setDirectResults((current) => ({
+        ...current,
+        [accountKey]: { ok: false, message: error.message },
+      }));
+      setMessage(error.message);
+    } finally {
+      setDirectBusy("");
+    }
+  }
+
+  function resetDirectForm(accountKey) {
+    setDirectForms((current) => ({ ...current, [accountKey]: createDirectForm() }));
+    setDirectResults((current) => ({ ...current, [accountKey]: null }));
+  }
+
+  function renderDirectSqlPage(accountKey) {
+    const config = DIRECT_SQL_ACCOUNTS[accountKey];
+    const form = directForms[accountKey] || createDirectForm();
+    const result = directResults[accountKey];
+    const testBusy = directBusy === `${accountKey}:test`;
+    const invoiceBusy = directBusy === `${accountKey}:invoice`;
+    const paymentBusy = directBusy === `${accountKey}:payment`;
+    return (
+      <main className="app-shell workflow-page direct-sql-page">
+        <header className="workflow-page-header">
+          <div>
+            <p className="brand-label">{config.eyebrow}</p>
+            <h1>{config.title}</h1>
+          </div>
+          <div className="workflow-row-actions">
+            <button type="button" className="secondary-button" onClick={() => testDirectApi(accountKey)} disabled={Boolean(directBusy)}>
+              {testBusy ? "Testing..." : `Test ${config.accent}`}
+            </button>
+            <button type="button" className="secondary-button" onClick={() => resetDirectForm(accountKey)} disabled={Boolean(directBusy)}>
+              New Entry
+            </button>
+          </div>
+        </header>
+        <p className="hint">{config.description} SQL API keys stay inside Apps Script Script Properties.</p>
+        <section className="direct-sql-layout">
+          <div className="workflow-section direct-sql-form">
+            <div className="workflow-page-header compact">
+              <div>
+                <p className="brand-label">Customer</p>
+                <h2>Customer profile</h2>
+              </div>
+            </div>
+            <div className="direct-form-grid two">
+              <label className="field">
+                <span>Customer / Company <b>*</b></span>
+                <input value={form.customerName} onChange={(event) => updateDirectForm(accountKey, { customerName: event.target.value })} />
+              </label>
+              <label className="field">
+                <span>SQL Customer Code</span>
+                <input value={form.sqlCustomerCode} placeholder="Optional" onChange={(event) => updateDirectForm(accountKey, { sqlCustomerCode: event.target.value })} />
+              </label>
+              <label className="field">
+                <span>Phone</span>
+                <input value={form.customerPhone} onChange={(event) => updateDirectForm(accountKey, { customerPhone: event.target.value })} />
+              </label>
+              <label className="field">
+                <span>Email</span>
+                <input value={form.customerEmail} type="email" onChange={(event) => updateDirectForm(accountKey, { customerEmail: event.target.value })} />
+              </label>
+              <label className="field">
+                <span>TIN</span>
+                <input value={form.tin} onChange={(event) => updateDirectForm(accountKey, { tin: event.target.value })} />
+              </label>
+              <label className="field">
+                <span>ID Type</span>
+                <input value={form.idType} onChange={(event) => updateDirectForm(accountKey, { idType: event.target.value })} />
+              </label>
+              <label className="field">
+                <span>ID No</span>
+                <input value={form.idNo} onChange={(event) => updateDirectForm(accountKey, { idNo: event.target.value })} />
+              </label>
+              <label className="field direct-wide-field">
+                <span>Billing Address</span>
+                <textarea value={form.billingAddress} rows="3" onChange={(event) => updateDirectForm(accountKey, { billingAddress: event.target.value })} />
+              </label>
+            </div>
+          </div>
+          <div className="workflow-section direct-sql-form">
+            <div className="workflow-page-header compact">
+              <div>
+                <p className="brand-label">Sales invoice</p>
+                <h2>Invoice and OR details</h2>
+              </div>
+            </div>
+            <div className="direct-form-grid two">
+              <label className="field">
+                <span>Reference <b>*</b></span>
+                <input value={form.docRef} onChange={(event) => updateDirectForm(accountKey, { docRef: event.target.value })} />
+              </label>
+              <label className="field">
+                <span>Invoice Date</span>
+                <input type="date" value={form.invoiceDate} onChange={(event) => updateDirectForm(accountKey, { invoiceDate: event.target.value })} />
+              </label>
+              <label className="field direct-wide-field">
+                <span>Description</span>
+                <input value={form.description} onChange={(event) => updateDirectForm(accountKey, { description: event.target.value })} />
+              </label>
+              <label className="field">
+                <span>Qty</span>
+                <input type="number" min="0" step="0.01" value={form.quantity} onChange={(event) => updateDirectForm(accountKey, { quantity: event.target.value })} />
+              </label>
+              <label className="field">
+                <span>UOM</span>
+                <input value={form.uom} onChange={(event) => updateDirectForm(accountKey, { uom: event.target.value })} />
+              </label>
+              <label className="field">
+                <span>Amount RM <b>*</b></span>
+                <input type="number" min="0" step="0.01" inputMode="decimal" value={form.amount} onChange={(event) => updateDirectForm(accountKey, { amount: event.target.value })} />
+              </label>
+              <label className="field">
+                <span>Terms</span>
+                <input value={form.terms} onChange={(event) => updateDirectForm(accountKey, { terms: event.target.value })} />
+              </label>
+              <label className="field">
+                <span>Payment Date</span>
+                <input type="date" value={form.paymentDate} onChange={(event) => updateDirectForm(accountKey, { paymentDate: event.target.value })} />
+              </label>
+              <label className="field">
+                <span>Payment Ref</span>
+                <input value={form.paymentRef} onChange={(event) => updateDirectForm(accountKey, { paymentRef: event.target.value })} />
+              </label>
+            </div>
+            <div className="direct-total-strip">
+              <span>SQL amount</span>
+              <strong>{money(form.amount || 0, "RM")}</strong>
+            </div>
+            <div className="workflow-row-actions direct-main-actions">
+              <button type="button" className="primary-button" onClick={() => createDirectSqlInvoice(accountKey)} disabled={Boolean(directBusy)}>
+                <ReceiptText aria-hidden="true" />
+                {invoiceBusy ? "Creating..." : "Create SQL Invoice"}
+              </button>
+              <button type="button" className="secondary-button" onClick={() => createDirectSqlPayment(accountKey)} disabled={Boolean(directBusy)}>
+                <CreditCard aria-hidden="true" />
+                {paymentBusy ? "Creating OR..." : "Create Customer Payment / OR"}
+              </button>
+            </div>
+          </div>
+          <aside className="direct-sql-result">
+            <p className="brand-label">Result</p>
+            {result ? (
+              <div className={`sql-sync-card ${result.ok === false ? "is-error" : "is-ok"}`}>
+                <div>
+                  <span>{result.ok === false ? "Needs checking" : "Latest action"}</span>
+                  <strong>{result.message}</strong>
+                </div>
+                {result.data ? (
+                  <dl className="direct-result-list">
+                    <div><dt>Reference</dt><dd>{result.data.docRef || form.docRef}</dd></div>
+                    <div><dt>Customer Code</dt><dd>{result.data.sqlCustomerCode || "-"}</dd></div>
+                    <div><dt>SQL Invoice</dt><dd>{result.data.sqlDocNo || "-"}</dd></div>
+                    <div><dt>OR</dt><dd>{result.data.sqlPaymentDocNo || "-"}</dd></div>
+                  </dl>
+                ) : null}
+              </div>
+            ) : (
+              <div className="sql-sync-card">
+                <div>
+                  <span>Ready</span>
+                  <strong>Fill the form, then create the invoice first. Create OR after payment is confirmed.</strong>
+                </div>
+              </div>
+            )}
+          </aside>
+        </section>
+      </main>
+    );
   }
 
   const recentPaidNo = String(recentPaidUndo?.invoiceNo || "");
@@ -928,59 +1255,10 @@ export default function App() {
         </main>
       ) : null}
 
+      {view === "sql-direct" ? renderDirectSqlPage("levince") : null}
+
       {view === "financial" ? (
-        <main className="app-shell workflow-page financial-page">
-          <header className="workflow-page-header">
-            <div>
-              <p className="brand-label">Second SQL account</p>
-              <h1>Vincenology SDN BHD</h1>
-            </div>
-          </header>
-          <section className="financial-hero-panel">
-            <div>
-              <span className="financial-step">1</span>
-              <h2>SQL-format invoice</h2>
-              <p>Create the invoice here, save it into this workflow, and export a PDF for the customer.</p>
-            </div>
-            <div>
-              <span className="financial-step">2</span>
-              <h2>Payment check</h2>
-              <p>After the customer pays, mark it Paid from this page so it stays separate from LeVince invoices.</p>
-            </div>
-            <div>
-              <span className="financial-step">3</span>
-              <h2>OR by API</h2>
-              <p>The paid invoice can create the Customer Payment / OR through this account's SQL API credentials.</p>
-            </div>
-          </section>
-          <section className="workflow-section financial-next-panel">
-            <p className="brand-label">Ready for setup</p>
-            <h2>What this page will use</h2>
-            <p>
-              This second account should use its own Google Sheet tabs and its own SQL API keys, so it will not mix
-              with the current LeVince SQL upload queue. The invoice PDF can be made in SQL style once we have one
-              sample SQL invoice PDF or confirmed SQL report output from the API.
-            </p>
-            <div className="workflow-row-actions">
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={testVincenologyApi}
-                disabled={testingVincenology}
-              >
-                {testingVincenology ? "Testing..." : "Test Vincenology API"}
-              </button>
-            </div>
-            {vincenologyStatus ? (
-              <div className={`sql-sync-card ${vincenologyStatus.ok === false ? "is-error" : "is-ok"}`}>
-                <div>
-                  <span>API status</span>
-                  <strong>{vincenologyStatus.message}</strong>
-                </div>
-              </div>
-            ) : null}
-          </section>
-        </main>
+        renderDirectSqlPage("vincenology")
       ) : null}
     </>
   );

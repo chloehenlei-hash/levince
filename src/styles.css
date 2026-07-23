@@ -1557,14 +1557,107 @@ textarea:focus {
   padding: 22px;
 }
 
+.direct-sql-page {
+  padding-bottom: 72px;
+}
+
+.direct-sql-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(280px, 0.45fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.direct-sql-form,
+.direct-sql-result {
+  margin: 0;
+  border: 1px solid #ecd9cf;
+  border-radius: 8px;
+  background: #fffdfb;
+  box-shadow: 0 12px 28px rgba(103, 68, 51, 0.1);
+  padding: 20px;
+}
+
+.direct-form-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.direct-form-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.direct-wide-field {
+  grid-column: 1 / -1;
+}
+
+.direct-sql-form textarea {
+  min-height: 86px;
+}
+
+.direct-total-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 18px 0;
+  border: 1px solid #dfecd8;
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: #f0fbf4;
+}
+
+.direct-total-strip span {
+  color: #237a4b;
+  font-size: 0.82rem;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.direct-total-strip strong {
+  font-size: 1.25rem;
+}
+
+.direct-main-actions {
+  align-items: stretch;
+}
+
+.direct-result-list {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0 0;
+}
+
+.direct-result-list div {
+  display: grid;
+  gap: 3px;
+  border-top: 1px solid rgba(35, 122, 75, 0.14);
+  padding-top: 10px;
+}
+
+.direct-result-list dt {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.direct-result-list dd {
+  margin: 0;
+  font-weight: 760;
+  word-break: break-word;
+}
+
 @media (max-width: 900px) {
   .workflow-connection,
   .workflow-stats,
-  .sql-command-panel {
+  .sql-command-panel,
+  .direct-sql-layout {
     grid-template-columns: 1fr;
   }
 
-  .sql-main-actions {
+  .sql-main-actions,
+  .direct-main-actions {
     flex-direction: column;
     align-items: stretch;
   }
@@ -1578,5 +1671,9 @@ textarea:focus {
   .workflow-bar {
     width: 100%;
     padding: 12px 10px 0;
+  }
+
+  .direct-form-grid.two {
+    grid-template-columns: 1fr;
   }
 }
