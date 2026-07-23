@@ -1,5 +1,13 @@
 # Worklog
 
+## Financial Jasonurian Entry + Download Save Guard - 2026-07-23
+
+- Added a new website navigation entry and page shell named `Financial Jasonurian Berhad` for the second SQL account workflow.
+- Kept the second-account page separate from LeVince's existing Invoices and SQL Upload queues to avoid mixing records before separate API credentials/tabs are wired.
+- Changed `src/InvoiceGenerator.jsx` download flow so an `INVOICE` must save to the workflow successfully before the PDF download/share starts.
+- If saving fails, the PDF download is stopped and a visible error is shown; `QUOTATION` continues to download without saving.
+- Ran production build successfully; current generated assets include `dist/assets/index-CGiNULc7.js`, `dist/assets/index-BxvzvEq2.css`, and `dist/assets/pdf-4Q7curbx.js`.
+
 ## SQL Upload RM-Only Confirmation Rule - 2026-07-23
 
 - Simplified SQL Upload warnings so missing customer phone and negative invoice rows no longer block or distract Chloe.

@@ -90,6 +90,7 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "", exist
   const [generatedBlob, setGeneratedBlob] = useState(null);
   const [filename, setFilename] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState("");
   const [quickPasteText, setQuickPasteText] = useState("");
   const [quickPasteStatus, setQuickPasteStatus] = useState("");
@@ -353,12 +354,12 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "", exist
   }
 
   async function autoSaveDownloadedInvoice(fileName) {
-    if (!onSaveInvoice) return;
+    if (!onSaveInvoice) return { saved: true, skipped: true };
     const savedInvoice = generatedInvoiceRef.current || invoice;
     const documentType = String(savedInvoice.documentLabel || "INVOICE").trim().toUpperCase();
-    if (documentType !== "INVOICE") return;
+    if (documentType !== "INVOICE") return { saved: true, skipped: true };
     const saveKey = `${savedInvoice.receiptNumber || ""}|${fileName}|${generatedBlob?.size || 0}`;
-    if (lastAutoSavedKey.current === saveKey) return;
+    if (lastAutoSavedKey.current === saveKey) return { saved: true, skipped: true };
     const saved = await onSaveInvoice({
       invoice: savedInvoice,
       tableLayout,
@@ -366,39 +367,51 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "", exist
       hasGeneratedPdf: true,
     });
     if (saved) lastAutoSavedKey.current = saveKey;
+    return { saved: Boolean(saved), skipped: false };
   }
 
   async function handleDownload() {
     if (!generatedBlob) return;
+    if (isDownloading) return;
 
     const fileName = filename || "Levince Chauffeur.pdf";
+    setError("");
+    setIsDownloading(true);
 
-    if (typeof File !== "undefined" && navigator.share && navigator.canShare) {
-      const file = new File([generatedBlob], fileName, { type: "application/pdf" });
-      if (navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({
-            files: [file],
-            title: fileName.replace(/\.pdf$/i, ""),
-          });
-          await autoSaveDownloadedInvoice(fileName);
-          return;
-        } catch (shareError) {
-          if (shareError?.name === "AbortError") return;
+    try {
+      const saveResult = await autoSaveDownloadedInvoice(fileName);
+      if (!saveResult.saved) {
+        setError("PDF was not downloaded because the invoice could not be saved. Please check the save message and try again.");
+        return;
+      }
+
+      if (typeof File !== "undefined" && navigator.share && navigator.canShare) {
+        const file = new File([generatedBlob], fileName, { type: "application/pdf" });
+        if (navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({
+              files: [file],
+              title: fileName.replace(/\.pdf$/i, ""),
+            });
+            return;
+          } catch (shareError) {
+            if (shareError?.name === "AbortError") return;
+          }
         }
       }
-    }
 
-    const downloadUrl = URL.createObjectURL(generatedBlob);
-    const link = document.createElement("a");
-    link.href = downloadUrl;
-    link.download = fileName;
-    link.rel = "noopener";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 30000);
-    await autoSaveDownloadedInvoice(fileName);
+      const downloadUrl = URL.createObjectURL(generatedBlob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = fileName;
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 30000);
+    } finally {
+      setIsDownloading(false);
+    }
   }
 
   function resetToSample() {
@@ -908,9 +921,9 @@ For airport arrival, 90 minutes waiting time is included.`}
               Generate PDF
             </button>
             {previewUrl ? (
-              <button type="button" className="download-button" onClick={handleDownload}>
-                <Download aria-hidden="true" />
-                Download
+              <button type="button" className="download-button" onClick={handleDownload} disabled={isDownloading}>
+                {isDownloading ? <Loader2 className="spin" aria-hidden="true" /> : <Download aria-hidden="true" />}
+                {isDownloading ? "Saving..." : "Download"}
               </button>
             ) : null}
             {saveStatus ? <span className="workflow-save-status">{saveStatus}</span> : null}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ClipboardList, Database, FilePlus2, Paperclip } from "lucide-react";
+import { Building2, CheckCircle2, ClipboardList, Database, FilePlus2, Paperclip } from "lucide-react";
 import InvoiceGenerator from "./InvoiceGenerator.jsx";
 import { callWorkflowApi } from "./workflowApi.js";
 
@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { key: "new", label: "New Invoice", icon: FilePlus2 },
   { key: "invoices", label: "Invoices", icon: ClipboardList },
   { key: "sql", label: "SQL Upload", icon: Database },
+  { key: "financial", label: "Financial Jasonurian Berhad", icon: Building2 },
 ];
 
 const MONTH_NAMES = [
@@ -821,6 +822,43 @@ export default function App() {
                 </tbody>
               </table>
             </div>
+          </section>
+        </main>
+      ) : null}
+
+      {view === "financial" ? (
+        <main className="app-shell workflow-page financial-page">
+          <header className="workflow-page-header">
+            <div>
+              <p className="brand-label">Second SQL account</p>
+              <h1>Financial Jasonurian Berhad</h1>
+            </div>
+          </header>
+          <section className="financial-hero-panel">
+            <div>
+              <span className="financial-step">1</span>
+              <h2>SQL-format invoice</h2>
+              <p>Create the invoice here, save it into this workflow, and export a PDF for the customer.</p>
+            </div>
+            <div>
+              <span className="financial-step">2</span>
+              <h2>Payment check</h2>
+              <p>After the customer pays, mark it Paid from this page so it stays separate from LeVince invoices.</p>
+            </div>
+            <div>
+              <span className="financial-step">3</span>
+              <h2>OR by API</h2>
+              <p>The paid invoice can create the Customer Payment / OR through this account's SQL API credentials.</p>
+            </div>
+          </section>
+          <section className="workflow-section financial-next-panel">
+            <p className="brand-label">Ready for setup</p>
+            <h2>What this page will use</h2>
+            <p>
+              This second account should use its own Google Sheet tabs and its own SQL API keys, so it will not mix
+              with the current LeVince SQL upload queue. The invoice PDF can be made in SQL style once we have one
+              sample SQL invoice PDF or confirmed SQL report output from the API.
+            </p>
           </section>
         </main>
       ) : null}

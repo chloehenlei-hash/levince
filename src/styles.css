@@ -1472,6 +1472,60 @@ textarea:focus {
   padding: 2px 5px;
 }
 
+.financial-page {
+  padding-bottom: 72px;
+}
+
+.financial-hero-panel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 18px 0;
+}
+
+.financial-hero-panel > div,
+.financial-next-panel {
+  border: 1px solid #ecd9cf;
+  border-radius: 8px;
+  background: #fffaf5;
+  box-shadow: 0 12px 28px rgba(103, 68, 51, 0.1);
+}
+
+.financial-hero-panel > div {
+  padding: 18px;
+}
+
+.financial-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 14px;
+  border-radius: 999px;
+  background: #c3182a;
+  color: #fff;
+  font-weight: 800;
+  box-shadow: var(--button-lift);
+}
+
+.financial-hero-panel h2,
+.financial-next-panel h2 {
+  margin: 0 0 8px;
+  font-size: 1.2rem;
+}
+
+.financial-hero-panel p,
+.financial-next-panel p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.financial-next-panel {
+  padding: 22px;
+}
+
 @media (max-width: 900px) {
   .workflow-connection,
   .workflow-stats,
@@ -1482,6 +1536,10 @@ textarea:focus {
   .sql-main-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .financial-hero-panel {
+    grid-template-columns: 1fr;
   }
 }
 
