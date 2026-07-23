@@ -1,5 +1,9 @@
 # Worklog
 
+## Second SQL Account Rename - 2026-07-23
+
+- Renamed the second SQL account page/navigation label from `Financial Jasonurian Berhad` to `Vincenology SDN BHD`.
+
 ## SQL OR Retry Flow - 2026-07-23
 
 - Added a dedicated `retrySqlPayment` Apps Script action for retrying Customer Payment / OR creation on one invoice.

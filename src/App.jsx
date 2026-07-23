@@ -7,7 +7,7 @@ const NAV_ITEMS = [
   { key: "new", label: "New Invoice", icon: FilePlus2 },
   { key: "invoices", label: "Invoices", icon: ClipboardList },
   { key: "sql", label: "SQL Upload", icon: Database },
-  { key: "financial", label: "Financial Jasonurian Berhad", icon: Building2 },
+  { key: "financial", label: "Vincenology SDN BHD", icon: Building2 },
 ];
 
 const MONTH_NAMES = [
@@ -865,7 +865,7 @@ export default function App() {
           <header className="workflow-page-header">
             <div>
               <p className="brand-label">Second SQL account</p>
-              <h1>Financial Jasonurian Berhad</h1>
+              <h1>Vincenology SDN BHD</h1>
             </div>
           </header>
           <section className="financial-hero-panel">
