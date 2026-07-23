@@ -1,5 +1,17 @@
 # Worklog
 
+## Direct SQL Auto Customer Lookup - 2026-07-23
+
+- Direct SQL quick paste now automatically searches the relevant SQL customer database after organising pasted details.
+- If the lookup finds an exact customer name match or only one result, the page fills the SQL Customer Code and customer profile fields automatically.
+- If multiple possible customers are found, the page shows them for Chloe to choose before creating the SQL invoice.
+- If no SQL customer is found, the page explains that `Create SQL Invoice / OR` will create the customer first, then create the invoice.
+- Manual edits to `Customer / Company` clear the old SQL Customer Code; leaving the field triggers the same automatic SQL customer lookup.
+- This is frontend-only; the existing Apps Script direct-create flow already resolves or creates the SQL customer before creating Sales Invoice / OR.
+- Ran production build successfully. Current generated assets include `dist/assets/index-COlMBIk8.js`, `dist/assets/index-BFvdgZDr.css`, and `dist/assets/pdf-C7cWuXzN.js`.
+- Ran Apps Script syntax checks for `apps-script/Code.gs`, `apps-script/SqlApi.gs`, and `apps-script/Scheduler.gs`.
+- Ran local Playwright smoke checks against `http://localhost:5173/`; paste filled Vincenology direct SQL fields and started customer lookup with no desktop or mobile horizontal overflow.
+
 ## Direct SQL Quick Paste - 2026-07-23
 
 - Added a `Quick paste` panel to both direct SQL pages (`SQL Direct` and `Vincenology SDN BHD`).

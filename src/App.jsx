@@ -102,6 +102,10 @@ function directDocumentKey(doc) {
   return [doc.account, doc.sqlDocKey, doc.sqlDocNo, doc.docRef].filter(Boolean).join("|");
 }
 
+function normaliseSearchName(value) {
+  return textValue(value).replace(/\s+/g, " ").toUpperCase();
+}
+
 function toDateInputValue(value) {
   const text = textValue(value);
   if (!text) return todayKey();
@@ -713,11 +717,15 @@ export default function App() {
       return false;
     }
     const parsed = parseInvoiceTextDetails(value, createEmptyInvoiceData());
-    setDirectForms((current) => {
-      const currentForm = current[accountKey] || createDirectForm();
-      return { ...current, [accountKey]: directFormFromParsedInvoice(parsed, currentForm) };
+    const parsedForm = directFormFromParsedInvoice(parsed, directForms[accountKey] || createDirectForm());
+    setDirectForms((current) => ({ ...current, [accountKey]: parsedForm }));
+    updateDirectCustomerSearch(accountKey, {
+      query: parsedForm.customerName || "",
+      results: [],
+      message: parsedForm.customerName ? `Checking SQL customer database for ${parsedForm.customerName}...` : "",
     });
-    updateDirectPasteStatus(accountKey, `${mode} organise complete. Please review before creating SQL.`);
+    if (parsedForm.customerName) autoResolveSqlCustomer(accountKey, parsedForm.customerName);
+    updateDirectPasteStatus(accountKey, `${mode} organise complete. Customer lookup is running. Please review before creating SQL.`);
     setMessage(`${mode} organise complete for ${DIRECT_SQL_ACCOUNTS[accountKey].title}.`);
     return true;
   }
@@ -770,7 +778,38 @@ export default function App() {
     }
   }
 
-  function selectSqlCustomer(accountKey, customer) {
+  async function autoResolveSqlCustomer(accountKey, query) {
+    const searchText = textValue(query);
+    if (searchText.length < 2) return;
+    try {
+      const data = await callWorkflowApi("sqlSearchCustomers", { account: accountKey, query: searchText });
+      const results = data.customers || [];
+      const target = normaliseSearchName(searchText);
+      const exact = results.find((customer) => normaliseSearchName(customer.customerName) === target);
+      const picked = exact || (results.length === 1 ? results[0] : null);
+      if (picked) {
+        selectSqlCustomer(accountKey, picked, {
+          message: `Existing SQL customer selected: ${picked.customerName || picked.sqlCustomerCode}.`,
+        });
+        return;
+      }
+      updateDirectCustomerSearch(accountKey, {
+        query: searchText,
+        results,
+        message: results.length
+          ? `${results.length} possible SQL customer(s) found. Choose the correct one before creating.`
+          : "No existing SQL customer found. Create SQL Invoice / OR will create this customer first, then create the invoice.",
+      });
+    } catch (error) {
+      updateDirectCustomerSearch(accountKey, {
+        query: searchText,
+        results: [],
+        message: `${error.message}. Create will still try to resolve/create the SQL customer first.`,
+      });
+    }
+  }
+
+  function selectSqlCustomer(accountKey, customer, options = {}) {
     updateDirectForm(accountKey, {
       customerName: customer.customerName || "",
       sqlCustomerCode: customer.sqlCustomerCode || "",
@@ -783,7 +822,7 @@ export default function App() {
     });
     updateDirectCustomerSearch(accountKey, {
       query: customer.customerName || customer.sqlCustomerCode || "",
-      message: `Selected ${customer.customerName || customer.sqlCustomerCode}.`,
+      message: options.message || `Selected ${customer.customerName || customer.sqlCustomerCode}.`,
       results: [],
     });
   }
@@ -1140,7 +1179,11 @@ RM190`}
             <div className="direct-form-grid two">
               <label className="field">
                 <span>Customer / Company <b>*</b></span>
-                <input value={form.customerName} onChange={(event) => updateDirectForm(accountKey, { customerName: event.target.value })} />
+                <input
+                  value={form.customerName}
+                  onChange={(event) => updateDirectForm(accountKey, { customerName: event.target.value, sqlCustomerCode: "" })}
+                  onBlur={() => autoResolveSqlCustomer(accountKey, form.customerName)}
+                />
               </label>
               <label className="field">
                 <span>SQL Customer Code</span>
