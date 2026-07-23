@@ -1,5 +1,13 @@
 # Worklog
 
+## Direct SQL Invoice Master Reference Fix - 2026-07-23
+
+- Investigated the live `SQL API 400: No record found` response after customer confirmation used fallback customer `300-C0001`.
+- Confirmed the official SQL Account Postman Sales Invoice sample leaves agent, area, project, terms, shipper, detail item, location, UOM, tax, tariff, and GL account references blank.
+- Direct Sales Invoice creation now first tries the official no-reference shape so invalid local defaults such as `----`, `C.O.D.`, `UNIT`, or `510-000` cannot make SQL reject the whole invoice as an unknown record.
+- Existing configured/default payload variants remain as fallbacks, and failure messages now identify each attempted payload mode.
+- Added backend marker `sql-direct-invoice-master-refs-20260723`.
+
 ## Direct SQL Sales Invoice Insert Payload Fix - 2026-07-23
 
 - Fixed Direct SQL customer auto-match after Chloe observed `testing` being replaced by existing `CASH SALES`.
