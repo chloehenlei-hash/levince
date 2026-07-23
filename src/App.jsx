@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Building2, CheckCircle2, ClipboardList, CreditCard, Database, Download, FilePlus2, Paperclip, ReceiptText, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Building2, CheckCircle2, ClipboardList, CreditCard, Database, Download, FilePlus2, FileText, Loader2, Paperclip, ReceiptText, RefreshCw, Search, Sparkles, Trash2 } from "lucide-react";
 import InvoiceGenerator from "./InvoiceGenerator.jsx";
+import { createEmptyInvoiceData, getInvoiceTotal, normaliseInvoiceData } from "./pdf/invoicePdf.js";
+import { parsePastedInvoiceDetails as parseInvoiceTextDetails } from "./utils/invoiceTextParser.js";
 import { callWorkflowApi } from "./workflowApi.js";
 
 const NAV_ITEMS = [
@@ -98,6 +100,69 @@ function saveDirectSqlHistory(history) {
 
 function directDocumentKey(doc) {
   return [doc.account, doc.sqlDocKey, doc.sqlDocNo, doc.docRef].filter(Boolean).join("|");
+}
+
+function toDateInputValue(value) {
+  const text = textValue(value);
+  if (!text) return todayKey();
+  const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) return `${iso[1]}-${padMonth(iso[2])}-${padMonth(iso[3])}`;
+  const parsed = Date.parse(text.replace(/(\d+)(st|nd|rd|th)/gi, "$1"));
+  if (!Number.isNaN(parsed)) {
+    const date = new Date(parsed);
+    return `${date.getFullYear()}-${padMonth(date.getMonth() + 1)}-${padMonth(date.getDate())}`;
+  }
+  return todayKey();
+}
+
+function parsedContactField(invoice, kind) {
+  const fields = [
+    { label: invoice.headerLabels?.email || "EMAIL", value: invoice.email },
+    { label: invoice.headerLabels?.phone || "PHONE", value: invoice.phone },
+  ];
+  const found = fields.find((field) => new RegExp(kind, "i").test(field.label || ""));
+  return textValue(found?.value);
+}
+
+function directDescriptionFromInvoice(parsed) {
+  const invoice = normaliseInvoiceData(parsed);
+  const lines = [];
+  invoice.serviceGroups.forEach((group) => {
+    const heading = textValue(group.heading);
+    group.dates.forEach((dateGroup) => {
+      const date = textValue(dateGroup.date);
+      dateGroup.lines.forEach((line) => {
+        const description = textValue(line.description);
+        if (!description || line.kind === "spacer" || line.isSpacer) return;
+        const parts = [date, heading, description].filter(Boolean);
+        lines.push(parts.join(" - "));
+      });
+    });
+  });
+  return lines.slice(0, 6).join("\n") || textValue(invoice.invoiceTitle) || "LeVince Chauffeur Service";
+}
+
+function directFormFromParsedInvoice(parsed, currentForm) {
+  const invoice = normaliseInvoiceData(parsed);
+  const customerName = textValue(invoice.companyName) || textValue(invoice.customerName);
+  const billingAddress = parsedContactField(invoice, "address");
+  const tin = parsedContactField(invoice, "tax|tin");
+  const amount = getInvoiceTotal(invoice);
+  return {
+    ...currentForm,
+    docRef: textValue(invoice.receiptNumber) || currentForm.docRef || directReference(),
+    customerName: customerName || currentForm.customerName,
+    customerEmail: /@/.test(invoice.email || "") ? invoice.email : currentForm.customerEmail,
+    customerPhone: textValue(invoice.phone) && invoice.phone !== "-" ? invoice.phone : currentForm.customerPhone,
+    billingAddress: billingAddress || currentForm.billingAddress,
+    tin: tin || currentForm.tin,
+    invoiceDate: toDateInputValue(invoice.invoiceDate),
+    paymentDate: toDateInputValue(invoice.invoiceDate),
+    description: directDescriptionFromInvoice(invoice),
+    quantity: "1",
+    uom: currentForm.uom || "UNIT",
+    amount: amount > 0 ? String(amount) : currentForm.amount,
+  };
 }
 
 function isRmCurrency(value) {
@@ -339,6 +404,8 @@ export default function App() {
   const [directResults, setDirectResults] = useState({});
   const [directCustomerSearches, setDirectCustomerSearches] = useState({});
   const [directDocuments, setDirectDocuments] = useState(loadDirectSqlHistory);
+  const [directPasteInputs, setDirectPasteInputs] = useState({});
+  const [directPasteStatus, setDirectPasteStatus] = useState({});
 
   const paidQueue = useMemo(
     () => invoices.filter((invoice) => invoice.Status === "Paid" && invoice["SQL Status"] !== "Uploaded to SQL"),
@@ -631,6 +698,55 @@ export default function App() {
     }));
   }
 
+  function updateDirectPasteInput(accountKey, value) {
+    setDirectPasteInputs((current) => ({ ...current, [accountKey]: value }));
+  }
+
+  function updateDirectPasteStatus(accountKey, value) {
+    setDirectPasteStatus((current) => ({ ...current, [accountKey]: value }));
+  }
+
+  function applyDirectParsedInvoice(accountKey, text, mode) {
+    const value = textValue(text);
+    if (!value) {
+      updateDirectPasteStatus(accountKey, "Paste booking or invoice details first.");
+      return false;
+    }
+    const parsed = parseInvoiceTextDetails(value, createEmptyInvoiceData());
+    setDirectForms((current) => {
+      const currentForm = current[accountKey] || createDirectForm();
+      return { ...current, [accountKey]: directFormFromParsedInvoice(parsed, currentForm) };
+    });
+    updateDirectPasteStatus(accountKey, `${mode} organise complete. Please review before creating SQL.`);
+    setMessage(`${mode} organise complete for ${DIRECT_SQL_ACCOUNTS[accountKey].title}.`);
+    return true;
+  }
+
+  function applyDirectNormalPaste(accountKey) {
+    applyDirectParsedInvoice(accountKey, directPasteInputs[accountKey] || "", "Normal");
+  }
+
+  async function applyDirectAiPaste(accountKey) {
+    const value = textValue(directPasteInputs[accountKey] || "");
+    if (!value) {
+      updateDirectPasteStatus(accountKey, "Paste booking or invoice details first.");
+      return;
+    }
+    setDirectBusy(`${accountKey}:ai-paste`);
+    updateDirectPasteStatus(accountKey, "AI is organising the details...");
+    try {
+      const result = await callWorkflowApi("parseInvoiceWithGemini", { text: value });
+      const organisedText = textValue(result.normalizedText || "");
+      if (!organisedText) throw new Error("No organised text returned.");
+      applyDirectParsedInvoice(accountKey, organisedText, "AI");
+    } catch (error) {
+      updateDirectPasteStatus(accountKey, error.message || "AI organise failed. Try Normal Organise instead.");
+      setMessage(error.message || "AI organise failed. Try Normal Organise instead.");
+    } finally {
+      setDirectBusy("");
+    }
+  }
+
   async function searchSqlCustomers(accountKey) {
     const current = directCustomerSearches[accountKey] || {};
     const query = textValue(current.query);
@@ -919,7 +1035,10 @@ export default function App() {
     const searchBusy = directBusy === `${accountKey}:customer-search`;
     const invoiceBusy = directBusy === `${accountKey}:invoice`;
     const paymentBusy = directBusy === `${accountKey}:payment`;
+    const aiPasteBusy = directBusy === `${accountKey}:ai-paste`;
     const documents = directDocuments[accountKey] || [];
+    const pasteText = directPasteInputs[accountKey] || "";
+    const pasteStatus = directPasteStatus[accountKey] || "";
     return (
       <main className="app-shell workflow-page direct-sql-page">
         <header className="workflow-page-header">
@@ -937,6 +1056,43 @@ export default function App() {
           </div>
         </header>
         <p className="hint">{config.description} SQL API keys stay inside Apps Script Script Properties.</p>
+        <section className="workflow-section direct-paste-panel">
+          <div className="workflow-page-header compact">
+            <div>
+              <p className="brand-label">Quick paste</p>
+              <h2>Paste booking details</h2>
+            </div>
+          </div>
+          <label className="field paste-field">
+            <span>Booking / invoice details</span>
+            <textarea
+              value={pasteText}
+              rows="7"
+              placeholder={`Company Name : Asian Trails Malaysia
+Name : Aina Nizam
+Email : aina.nizam@asiantrails.com.my
+Phone : 011 5379 5388
+
+23 July 2026
+Airport Transfer - Camry
+RM190`}
+              onChange={(event) => updateDirectPasteInput(accountKey, event.target.value)}
+              onPaste={() => updateDirectPasteStatus(accountKey, "Details pasted. Choose Normal Organise or AI Organise.")}
+            />
+          </label>
+          <p className="mini-instruction">The organiser fills customer, contact, date, description, and RM amount. Review the fields before creating SQL.</p>
+          <div className="paste-actions">
+            <button type="button" className="secondary-button" onClick={() => applyDirectNormalPaste(accountKey)} disabled={Boolean(directBusy)}>
+              <FileText aria-hidden="true" />
+              Normal Organise
+            </button>
+            <button type="button" className="ai-button" onClick={() => applyDirectAiPaste(accountKey)} disabled={Boolean(directBusy)}>
+              {aiPasteBusy ? <Loader2 className="spin" aria-hidden="true" /> : <Sparkles aria-hidden="true" />}
+              AI Organise
+            </button>
+            {pasteStatus ? <span>{pasteStatus}</span> : null}
+          </div>
+        </section>
         <section className="direct-sql-layout">
           <div className="workflow-section direct-sql-form">
             <div className="workflow-page-header compact">

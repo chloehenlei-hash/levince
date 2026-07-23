@@ -1568,6 +1568,14 @@ textarea:focus {
   align-items: start;
 }
 
+.direct-paste-panel {
+  margin-bottom: 18px;
+}
+
+.direct-paste-panel textarea {
+  min-height: 156px;
+}
+
 .direct-sql-form,
 .direct-sql-result {
   margin: 0;

@@ -1,5 +1,16 @@
 # Worklog
 
+## Direct SQL Quick Paste - 2026-07-23
+
+- Added a `Quick paste` panel to both direct SQL pages (`SQL Direct` and `Vincenology SDN BHD`).
+- The panel supports `Normal Organise` using the same local parser as `New Invoice`.
+- The panel supports `AI Organise` using the existing Apps Script `parseInvoiceWithGemini` action, then maps the organised text through the same local parser.
+- Parsed direct SQL fields include customer/company, email, phone, billing address when detected, TIN/tax number when detected, invoice/payment date, description, and RM amount.
+- Multi-line service details are flattened into one direct SQL description while the amount is taken from the parsed invoice total.
+- Ran production build successfully. Current generated assets include `dist/assets/index-CEDryOPV.js`, `dist/assets/index-BFvdgZDr.css`, and `dist/assets/pdf-CvQQXHBS.js`.
+- Ran Apps Script syntax checks for `apps-script/Code.gs`, `apps-script/SqlApi.gs`, and `apps-script/Scheduler.gs`.
+- Ran local Playwright smoke checks against `http://localhost:5173/`; sample paste filled customer, email, phone, date, description, and amount on the Vincenology page with no desktop or mobile horizontal overflow.
+
 ## Direct SQL Created Document Controls - 2026-07-23
 
 - Added a `Created SQL documents` panel under both `SQL Direct` and `Vincenology SDN BHD`.
