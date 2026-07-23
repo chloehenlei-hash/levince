@@ -35,8 +35,8 @@ if (!docKey&&!docNo) throw new Error("SQL invoice DocKey or DocNo is required be
 sqlDeleteAny_([docKey?"/salesinvoice/"+encodeURIComponent(docKey):"",docKey?"/salesinvoice?dockey="+encodeURIComponent(docKey):"",docNo?"/salesinvoice?docno="+encodeURIComponent(docNo):""],c,false);
 log(q,"sqlDirectDeleteInvoice","",q.docRef||docNo,"Deleted SQL invoice "+(docNo||docKey));return {ok:true,deleted:true,sqlDocNo:docNo||"",sqlDocKey:docKey||""};
 } function sqlDirectCreateInvoice_(d,s,config) {const customer=sqlDirectResolveCustomer_(d.customer,s,config),lookup="/salesinvoice?docref1="+encodeURIComponent(d.ref),existing=sqlFindDoc_(lookup,config);
-const api=existing||sqlCreateSalesInvoice_(sqlInvoicePayload_(d.inv,[d.item],customer,s),lookup,config);
-const doc=sqlFindObject_(api)||sqlFindDoc_(lookup,config)||{};if (!doc.dockey) throw new Error("Sales Invoice was created/found, but SQL DocKey is missing.");return {customer:customer,doc:doc};
+const directInvoiceData=existing||sqlCreateSalesInvoice_(sqlInvoicePayload_(d.inv,[d.item],customer,s),lookup,config);
+const doc=sqlFindObject_(directInvoiceData)||sqlFindDoc_(lookup,config)||{};if (!doc.dockey) throw new Error("Sales Invoice was created/found, but SQL DocKey is missing.");return {customer:customer,doc:doc};
 } function sqlDirectFindInvoiceDoc_(q,config) {const tries=[];if (q.sqlDocKey) tries.push("/salesinvoice/"+encodeURIComponent(q.sqlDocKey));if (q.sqlDocNo) tries.push("/salesinvoice?docno="+encodeURIComponent(q.sqlDocNo));if (q.docRef) tries.push("/salesinvoice?docref1="+encodeURIComponent(q.docRef));
 for (let i=0;i<tries.length;i++) {try {const doc=sqlFindDoc_(tries[i],config);if (doc) return doc;} catch (_) {}} return null;
 } function sqlDirectDocSummary_(doc) {return {docRef:doc.docref1||doc.DOCREF1||"",sqlDocNo:doc.docno||doc.DOCNO||"",sqlDocKey:sqlDocKey_(doc),customerName:doc.companyname||doc.COMPANYNAME||"",sqlCustomerCode:sqlCustomerCode_(doc),invoiceDate:doc.docdate||doc.DOCDATE||"",amount:doc.docamt||doc.localdocamt||doc.DOCAMT||0};
@@ -49,8 +49,8 @@ const invs=rows(T.inv).filter(x=>x.Status==="Paid"&&x["SQL Status"]==="Ready for
 ;invs.forEach(inv=>{try {sqlUploadAmount_(inv);let c=cm[ckey(inv["Customer Name"])];if (!c) throw new Error("Customer record is missing.");
 c=sqlResolveCustomer_(c,s);updateInv(inv["Invoice ID"],{"SQL Customer Code":c["SQL Customer Code"],"Updated At":now()}
 );const lookup="/salesinvoice?docref1="+encodeURIComponent(inv["Internal Invoice No"]);const existing=sqlFindDoc_(lookup);
-const api=existing||sqlCreateSalesInvoice_(sqlInvoicePayload_(inv,allItems,c,s),lookup);
-const doc=sqlFindObject_(api)||sqlFindDoc_(lookup)||{};if (!doc.dockey) throw new Error("Sales Invoice was created/found, but SQL DocKey is missing.");
+const syncInvoiceData=existing||sqlCreateSalesInvoice_(sqlInvoicePayload_(inv,allItems,c,s),lookup);
+const doc=sqlFindObject_(syncInvoiceData)||sqlFindDoc_(lookup)||{};if (!doc.dockey) throw new Error("Sales Invoice was created/found, but SQL DocKey is missing.");
 updateInv(inv["Invoice ID"],{"SQL Doc No":doc.docno||"","SQL Doc Key":doc.dockey||"","SQL API Error":"","Updated At":now()}
 );const pay=sqlEnsureCustomerPayment_(inv,c,doc,s);if (!pay.dockey) throw new Error("Customer Payment was created/found, but SQL Payment DocKey is missing.");
 updateInv(inv["Invoice ID"],{Status:"Uploaded to SQL","SQL Status":"Uploaded to SQL","Uploaded To SQL At":now(),"Uploaded By":"SQL API","SQL Doc No":doc.docno||"","SQL Doc Key":doc.dockey||"","SQL Payment Doc No":pay.docno||"","SQL Payment Doc Key":pay.dockey||"","SQL API Error":"","Updated At":now()}
@@ -64,8 +64,8 @@ const f=findInv(q.invoiceId),inv=f.inv,s=settings();sqlUploadAmount_(inv);
 const customers=syncCustomers([inv],s);let c=custMap(customers)[ckey(inv["Customer Name"])];
 if (!c) throw new Error("Customer record is missing.");c=sqlResolveCustomer_(c,s);updateInv(inv["Invoice ID"],{"SQL Customer Code":c["SQL Customer Code"],"Updated At":now()}
 );const lookup="/salesinvoice?docref1="+encodeURIComponent(inv["Internal Invoice No"]);const existing=sqlFindDoc_(lookup);
-const api=existing||sqlCreateSalesInvoice_(sqlInvoicePayload_(inv,rows(T.item),c,s),lookup);
-const doc=sqlFindObject_(api)||sqlFindDoc_(lookup)||{};if (!doc.dockey) throw new Error("Sales Invoice exists, but SQL DocKey is missing.");
+const retryInvoiceData=existing||sqlCreateSalesInvoice_(sqlInvoicePayload_(inv,rows(T.item),c,s),lookup);
+const doc=sqlFindObject_(retryInvoiceData)||sqlFindDoc_(lookup)||{};if (!doc.dockey) throw new Error("Sales Invoice exists, but SQL DocKey is missing.");
 updateInv(inv["Invoice ID"],{"SQL Doc No":doc.docno||"","SQL Doc Key":doc.dockey||"","SQL API Error":"","Updated At":now()}
 );try {const pay=sqlEnsureCustomerPayment_(inv,c,doc,s);if (!pay.dockey) throw new Error("Customer Payment / OR DocKey is missing.");
 updateInv(inv["Invoice ID"],{Status:"Uploaded to SQL","SQL Status":"Uploaded to SQL","Uploaded To SQL At":now(),"Uploaded By":"SQL API","SQL Payment Doc No":pay.docno||"","SQL Payment Doc Key":pay.dockey||"","SQL API Error":"","Updated At":now()}

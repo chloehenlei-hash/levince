@@ -8,6 +8,7 @@
 - Applied the same Sales Invoice insert wrapper to direct create, scheduled SQL upload, and OR retry invoice creation paths.
 - Follow-up hardening: direct Sales Invoice creation now tries clean insert detail rows first by omitting detail `dockey/dtlkey`, then falls back to `dtlkey = -1`, then a master `dockey = -1` variant if SQL Account still rejects the insert.
 - Each retry checks the same `docref1` before and after POST so a successful-but-erroring SQL response does not create duplicate invoices.
+- Apps Script paste fix: renamed repeated local `api` constants to distinct names because the Apps Script editor reported `Identifier 'api' has already been declared`.
 - Ran Apps Script syntax checks for `apps-script/Code.gs`, `apps-script/SqlApi.gs`, and `apps-script/Scheduler.gs`.
 
 ## Direct SQL Auto Customer Lookup - 2026-07-23
