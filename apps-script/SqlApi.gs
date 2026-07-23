@@ -4,6 +4,33 @@ return {host:(p.getProperty(prefix+"SQL_API_HOST")||SQL_API_DEFAULTS.host).repla
 ;} function sqlConnectionStatus() {return sqlConnectionStatusFor_("");} function vincenologySqlConnectionStatus() {return sqlConnectionStatusFor_("VINCENOLOGY_");
 } function sqlConnectionStatusFor_(prefix) {const c=sqlApiConfig_(prefix);if (!c.accessKey||!c.secretKey) return {ok:false,configured:false,error:"SQL API keys are not configured."}
 ;const r=sqlApiRequest_("GET","/version",null,false,c);return {ok:true,configured:true,status:r.status,data:r.data}
+;} function sqlDirectPrefix_(q) {return q.account==="vincenology"?"VINCENOLOGY_":"";
+} function sqlSearchCustomers(q) {const query=String(q.query||"").trim();if (query.length<2) return {ok:true,customers:[]};const c=sqlApiConfig_(sqlDirectPrefix_(q)),seen={},out=[];
+sqlCustomerSearchPaths_(query).forEach(path=>{try {const r=sqlApiRequest_("GET",path,null,true,c);sqlFlattenObjects_(r.data).forEach(x=>{const row=sqlCustomerSummary_(x),key=(row.sqlCustomerCode||"")+"|"+(row.customerName||"");if (!row.customerName&&!row.sqlCustomerCode) return;if (seen[key]) return;seen[key]=true;out.push(row);});} catch (_) {}});
+return {ok:true,customers:out.slice(0,10)};
+} function sqlCustomerSearchPaths_(q) {const e=encodeURIComponent(q);return ["/customer/"+e,"/customer?code="+e,"/customer?companyname="+e,"/customer?search="+e,"/customer?keyword="+e];
+} function sqlCustomerSummary_(x) {const b=sqlCustomerBranch_(x),addr=[val_(b,"address1","ADDRESS1","_ADDRESS1","Address1"),val_(b,"address2","ADDRESS2","_ADDRESS2","Address2"),val_(b,"address3","ADDRESS3","_ADDRESS3","Address3"),val_(b,"address4","ADDRESS4","_ADDRESS4","Address4")].filter(Boolean).join("\n");
+return {sqlCustomerCode:sqlCustomerCode_(x)||sqlCustomerCode_(b),customerName:val_(x,"companyname","COMPANYNAME","name","Name","companyName","CompanyName"),customerPhone:phone(val_(b,"phone1","PHONE1","_PHONE1","mobile","MOBILE","_MOBILE")||val_(x,"phone1","PHONE1","mobile","MOBILE")),customerEmail:val_(b,"email","EMAIL","_EMAIL")||val_(x,"email","EMAIL"),billingAddress:addr,tin:val_(x,"tin","TIN","TIN(14)"),idType:val_(x,"idtype","IDTYPE"),idNo:val_(x,"idno","IDNO","IDNO(20)")};
+} function sqlCustomerBranch_(x) {const b=x&&(x.sdsbranch||x.SDSBRANCH||x.branch||x.Branch||x.branches||x.Branches);return Array.isArray(b)?b[0]||{}:b||{};
+} function val_(o) {for (let i=1;i<arguments.length;i++) {const v=o&&o[arguments[i]];if (v!==undefined&&v!==null&&String(v)!=="") return String(v).trim();} return "";
+} function sqlDirectInput_(q) {const cu=q.customer||{},iv=q.invoice||{},pay=q.payment||{},ref=String(q.docRef||("WEB-"+Utilities.getUuid().slice(0,8))).trim(),amt=num(iv.amount);
+if (!cu.customerName) throw new Error("Customer name is required.");if (amt<=0) throw new Error("Amount must be more than RM 0.00.");
+const inv={"Invoice ID":"DIRECT-"+ref,"Internal Invoice No":ref,"Customer Name":cu.customerName,"SQL Customer Code":cu.sqlCustomerCode||"","Customer Email":cu.customerEmail||"","Customer Phone":phone(cu.customerPhone),"Billing Address":cu.billingAddress||"","Invoice Date":iv.invoiceDate||Utilities.formatDate(now(),Session.getScriptTimeZone(),"yyyy-MM-dd"),"Due Date":iv.invoiceDate||Utilities.formatDate(now(),Session.getScriptTimeZone(),"yyyy-MM-dd"),Currency:"RM",Total:amt,Notes:iv.description||"LeVince Chauffeur Service",Terms:iv.terms||"C.O.D.",TIN:cu.tin||"","ID Type":cu.idType||0,"ID No":cu.idNo||"","Paid At":pay.paymentDate||iv.invoiceDate||Utilities.formatDate(now(),Session.getScriptTimeZone(),"yyyy-MM-dd"),"Payment Ref":pay.paymentRef||"","Paid Amount RM":amt};
+const item={"Invoice ID":inv["Invoice ID"],Description:iv.description||"LeVince Chauffeur Service",Quantity:num(iv.quantity)||1,UOM:iv.uom||"UNIT","Unit Price":amt/(num(iv.quantity)||1),Discount:0,"Tax Code":"","Tax Amount":0,Amount:amt,"Account Code":""};
+const customer={"Customer Key":ckey(cu.customerName),"SQL Customer Code":cu.sqlCustomerCode||"","Customer Name":cu.customerName,"Customer Email":cu.customerEmail||"","Customer Phone":phone(cu.customerPhone),"Billing Address":cu.billingAddress||"",TIN:cu.tin||"","ID Type":cu.idType||0,"ID No":cu.idNo||""};
+return {ref:ref,inv:inv,item:item,customer:customer};
+} function sqlDirectCreateInvoice(q) {const c=sqlApiConfig_(sqlDirectPrefix_(q)),s=settings(),d=sqlDirectInput_(q),out=sqlDirectCreateInvoice_(d,s,c);
+log(q,"sqlDirectCreateInvoice","",d.ref,"SQL DocNo: "+(out.doc.docno||"created"));return {ok:true,docRef:d.ref,sqlCustomerCode:out.customer["SQL Customer Code"],sqlDocNo:out.doc.docno||"",sqlDocKey:out.doc.dockey||""};
+} function sqlDirectCreatePayment(q) {const c=sqlApiConfig_(sqlDirectPrefix_(q)),s=settings(),d=sqlDirectInput_(q),out=sqlDirectCreateInvoice_(d,s,c),pay=sqlEnsureCustomerPayment_(d.inv,out.customer,out.doc,s,c);
+if (!pay.dockey) throw new Error("Customer Payment / OR DocKey is missing.");log(q,"sqlDirectCreatePayment","",d.ref,"OR: "+(pay.docno||"created"));
+return {ok:true,docRef:d.ref,sqlCustomerCode:out.customer["SQL Customer Code"],sqlDocNo:out.doc.docno||"",sqlDocKey:out.doc.dockey||"",sqlPaymentDocNo:pay.docno||"",sqlPaymentDocKey:pay.dockey||""};
+} function sqlDirectCreateInvoice_(d,s,config) {const customer=sqlDirectResolveCustomer_(d.customer,s,config),lookup="/salesinvoice?docref1="+encodeURIComponent(d.ref),existing=sqlFindDoc_(lookup,config);
+const api=existing||sqlApiRequest_("POST","/salesinvoice",sqlInvoicePayload_(d.inv,[d.item],customer,s),false,config).data;
+const doc=sqlFindObject_(api)||sqlFindDoc_(lookup,config)||{};if (!doc.dockey) throw new Error("Sales Invoice was created/found, but SQL DocKey is missing.");return {customer:customer,doc:doc};
+} function sqlDirectResolveCustomer_(c,s,config) {const name=c["Customer Name"],oldCode=String(c["SQL Customer Code"]||"").trim();let found=oldCode?sqlFindCustomerByCode_(oldCode,config):null;
+if (!found) found=sqlFindCustomerByName_(name,config);if (!found) {if (!c["SQL Customer Code"]) c["SQL Customer Code"]=sqlDirectCustomerCode_(s);const created=sqlApiRequest_("POST","/customer",sqlCustomerPayload_(c,s),false,config).data;found=sqlFindCustomerObject_(created,name,"")||sqlFindCustomerByName_(name,config);}
+const code=sqlCustomerCode_(found);if (!code) throw new Error("Customer was created/found, but SQL did not return a customer code.");c["SQL Customer Code"]=code;return c;
+} function sqlDirectCustomerCode_(s) {const p=pick(s,"DEFAULT_CUSTOMER_CODE_PREFIX","300-C"),u=Utilities.getUuid().replace(/-/g,"").toUpperCase();return (p+u).slice(0,10);
 ;} function sqlSyncPaidInvoices() {setup();const q={user:"SQL API"},allItems=rows(T.item),s=settings();
 const invs=rows(T.inv).filter(x=>x.Status==="Paid"&&x["SQL Status"]==="Ready for SQL");const customers=syncCustomers(invs,s),cm=custMap(customers),result={ok:true,uploaded:[],failed:[]}
 ;invs.forEach(inv=>{try {sqlUploadAmount_(inv);let c=cm[ckey(inv["Customer Name"])];if (!c) throw new Error("Customer record is missing.");
@@ -33,32 +60,32 @@ updateInv(inv["Invoice ID"],{Status:"Uploaded to SQL","SQL Status":"Uploaded to 
 return {ok:true,invoiceNo:inv["Internal Invoice No"],sqlDocNo:doc.docno||"",sqlPaymentDocNo:pay.docno||""}
 ;} catch (err) {updateInv(inv["Invoice ID"],{"SQL API Error":"OR retry failed: "+(err.message||String(err)),"Updated At":now()}
 );log(q,"retrySqlPaymentError",inv["Invoice ID"],inv["Internal Invoice No"],err.message||String(err));
-throw err;}} function sqlEnsureCustomerPayment_(inv,c,invoiceDoc,s) {const ref="PAY-"+inv["Internal Invoice No"];
-const existing=sqlFindDoc_("/customerpayment?docref1="+encodeURIComponent(ref));if (existing) return existing;
-const created=sqlApiRequest_("POST","/customerpayment",sqlPaymentPayload_(inv,c,invoiceDoc,s)).data;
-return sqlFindObject_(created)||sqlFindDoc_("/customerpayment?docref1="+encodeURIComponent(ref))||{}
-;} function sqlResolveCustomer_(c,s) {let found=null;const oldCode=String(c["SQL Customer Code"]||"").trim();
-if (oldCode) found=sqlFindCustomerByCode_(oldCode);if (!found) found=sqlFindCustomerByName_(c["Customer Name"]);
-if (!found) {const created=sqlApiRequest_("POST","/customer",sqlCustomerPayload_(c,s)).data;
-found=sqlFindCustomerObject_(created,c["Customer Name"],oldCode)||sqlFindCustomerByCode_(oldCode);
-} const code=sqlCustomerCode_(found)||oldCode;if (!code) throw new Error("Customer was created/found, but SQL customer code is missing.");
+throw err;}} function sqlEnsureCustomerPayment_(inv,c,invoiceDoc,s,config) {const ref="PAY-"+inv["Internal Invoice No"];
+const existing=sqlFindDoc_("/customerpayment?docref1="+encodeURIComponent(ref),config);if (existing) return existing;
+const created=sqlApiRequest_("POST","/customerpayment",sqlPaymentPayload_(inv,c,invoiceDoc,s),false,config).data;
+return sqlFindObject_(created)||sqlFindDoc_("/customerpayment?docref1="+encodeURIComponent(ref),config)||{}
+;} function sqlResolveCustomer_(c,s,config) {let found=null;const oldCode=String(c["SQL Customer Code"]||"").trim(),name=c["Customer Name"];
+if (oldCode) found=sqlFindCustomerByCode_(oldCode,config);if (!found) found=sqlFindCustomerByName_(name,config);
+if (!found) {const created=sqlApiRequest_("POST","/customer",sqlCustomerPayload_(c,s),false,config).data;
+found=sqlFindCustomerObject_(created,name,"")||sqlFindCustomerByName_(name,config);}
+const code=sqlCustomerCode_(found);if (!code) throw new Error("Customer was created/found, but SQL did not return a customer code.");
 return sqlPatchCustomer_(c,{"SQL Customer Code":code,Status:"Uploaded","Uploaded At":now(),"Uploaded By":"SQL API","Updated At":now()}
-);} function sqlFindCustomerByCode_(code) {if (!code) return null;const r=sqlApiRequest_("GET","/customer/"+encodeURIComponent(code),null,true);
+);} function sqlFindCustomerByCode_(code,config) {if (!code) return null;const r=sqlApiRequest_("GET","/customer/"+encodeURIComponent(code),null,true,config);
 if (r.status<200||r.status>=300) return null;return sqlFlattenObjects_(r.data).find(x=>sqlCustomerCode_(x)===code)||null;
-} function sqlFindCustomerByName_(name) {const target=sqlNorm_(name);if (!target) return null;
+} function sqlFindCustomerByName_(name,config) {const target=sqlNorm_(name);if (!target) return null;
 const paths=["/customer?companyname="+encodeURIComponent(name),"/customer?search="+encodeURIComponent(name),"/customer?keyword="+encodeURIComponent(name)];
-for (let i=0;i<paths.length;i++) {try {const r=sqlApiRequest_("GET",paths[i],null,true);const exact=sqlFindCustomerObject_(r.data,name,"");
+for (let i=0;i<paths.length;i++) {try {const r=sqlApiRequest_("GET",paths[i],null,true,config);const exact=sqlFindCustomerObject_(r.data,name,"");
 if (exact) return exact;} catch (_) {}} return null;} function sqlPatchCustomer_(c,patch) {const sh=ss().getSheetByName(T.cust),vals=sh.getDataRange().getValues(),h=vals[0];
 const keyIx=h.indexOf("Customer Key"),key=String(c["Customer Key"]||"");for (let r=1;r<vals.length;
 r++) if (String(vals[r][keyIx])===key) {Object.keys(patch).forEach(k=>{const i=h.indexOf(k);
 if (i>=0) vals[r][i]=patch[k];c[k]=patch[k];});sh.getRange(r+1,1,1,h.length).setValues([vals[r]]);
 return c;} Object.keys(patch).forEach(k=>c[k]=patch[k]);return c;} function sqlFindCustomerObject_(data,name,code) {const target=sqlNorm_(name),wantCode=String(code||"").trim();
 return sqlFlattenObjects_(data).find(x=>{const foundCode=sqlCustomerCode_(x);const foundName=sqlNorm_(x.companyname||x.COMPANYNAME||x.name||x.Name||x.companyName||x.CompanyName);
-return (wantCode&&foundCode===wantCode)||(target&&foundName===target);})||null;} function sqlCustomerPayload_(c,s) {const a=splitAddr(c["Billing Address"]),date=sqlIsoDate_(new Date());
-return {code:c["SQL Customer Code"],controlaccount:pick(s,"DEFAULT_CUSTOMER_CONTROL_ACCOUNT","300-000"),companyname:c["Customer Name"],creditterm:pick(s,"DEFAULT_CUSTOMER_CREDIT_TERM","C.O.D."),creditlimit:"0.00",overduelimit:"0.00",statementtype:"O",currencycode:"",allowexceedcreditlimit:true,addpdctocrlimit:true,agingon:"I",creationdate:date,tin:c.TIN||"",idtype:Number(c["ID Type"]||0),idno:c["ID No"]||"",submissiontype:Number(pick(s,"DEFAULT_SUBMISSION_TYPE",17)),status:"A",dirty:true,sdsbranch:[{dtlkey:0,code:c["SQL Customer Code"],branchtype:"",branchname:"BILLING",address1:a[0]||"",address2:a[1]||"",address3:a[2]||"",address4:a[3]||"",postcode:"",city:"",state:"",country:pick(s,"DEFAULT_COUNTRY","MY"),attention:"",phone1:phone(c["Customer Phone"]),phone2:"",mobile:"",fax1:"",fax2:"",email:c["Customer Email"]||""}
+return (wantCode&&foundCode===wantCode)||(target&&foundName===target);})||null;} function sqlCustomerPayload_(c,s) {const a=splitAddr(c["Billing Address"]),date=sqlIsoDate_(new Date()),code=String(c["SQL Customer Code"]||"").trim();
+return {code:code,controlaccount:pick(s,"DEFAULT_CUSTOMER_CONTROL_ACCOUNT","300-000"),companyname:c["Customer Name"],creditterm:pick(s,"DEFAULT_CUSTOMER_CREDIT_TERM","C.O.D."),creditlimit:"0.00",overduelimit:"0.00",statementtype:"O",currencycode:"",allowexceedcreditlimit:true,addpdctocrlimit:true,agingon:"I",creationdate:date,tin:c.TIN||"",idtype:Number(c["ID Type"]||0),idno:c["ID No"]||"",submissiontype:Number(pick(s,"DEFAULT_SUBMISSION_TYPE",17)),status:"A",dirty:true,sdsbranch:[{dtlkey:0,code:code,branchtype:"",branchname:"BILLING",address1:a[0]||"",address2:a[1]||"",address3:a[2]||"",address4:a[3]||"",postcode:"",city:"",state:"",country:pick(s,"DEFAULT_COUNTRY","MY"),attention:"",phone1:phone(c["Customer Phone"]),phone2:"",mobile:"",fax1:"",fax2:"",email:c["Customer Email"]||""}
 ]};} function sqlInvoicePayload_(inv,allItems,c,s) {const date=sqlIsoDate_(inv["Invoice Date"]||inv["Paid At"]||new Date()),a=splitAddr(inv["Billing Address"]);
-const total=sqlUploadAmount_(inv),foreign=!isRmCurrency(inv.Currency);
-const items=foreign?[{Description:"LeVince Chauffeur Service - "+inv["Internal Invoice No"],Quantity:1,UOM:pick(s,"DEFAULT_UOM","UNIT"),"Unit Price":total,Amount:total}]:allItems.filter(x=>x["Invoice ID"]===inv["Invoice ID"]&&Number(x.Amount)!==0);if (!items.length) throw new Error("No money rows are available for SQL upload.");
+const total=sqlUploadAmount_(inv),foreign=!isRmCurrency(inv.Currency),moneyRows=allItems.filter(x=>x["Invoice ID"]===inv["Invoice ID"]&&Number(x.Amount)!==0),single=foreign||moneyRows.some(x=>Number(x.Amount)<0);
+const items=single?[{Description:"LeVince Chauffeur Service - "+inv["Internal Invoice No"],Quantity:1,UOM:pick(s,"DEFAULT_UOM","UNIT"),"Unit Price":total,Amount:total}]:moneyRows;if (!items.length) throw new Error("No money rows are available for SQL upload.");
 return {dockey:0,docno:"",docdate:date,postdate:date,taxdate:date,code:c["SQL Customer Code"],companyname:inv["Customer Name"],address1:a[0]||"",address2:a[1]||"",address3:a[2]||"",address4:a[3]||"",country:pick(s,"DEFAULT_COUNTRY","MY"),phone1:phone(inv["Customer Phone"]),agent:pick(s,"DEFAULT_AGENT","----"),project:pick(s,"DEFAULT_PROJECT","----"),terms:inv.Terms||pick(s,"DEFAULT_TERMS","C.O.D."),currencycode:"",currencyrate:"1.00",description:"LeVince Chauffeur Service",cancelled:false,docamt:sqlMoney_(total),localdocamt:sqlMoney_(total),docref1:String(inv["Internal Invoice No"]),tin:inv.TIN||"",idtype:Number(inv["ID Type"]||0),idno:inv["ID No"]||"",submissiontype:Number(pick(s,"DEFAULT_SUBMISSION_TYPE",17)),changed:true,sdsdocdetail:items.map((x,i)=>sqlDetail_(x,i+1,s))}
 ;} function sqlDetail_(x,seq,s) {const amount=Number(x.Amount),qty=Number(x.Quantity)||1;const price=Number(x["Unit Price"]);
 return {dtlkey:0,dockey:0,seq:seq,itemcode:x["Item Code"]||"",location:"",batch:"",project:pick(s,"DEFAULT_PROJECT","----"),description:x.Description||"Service",qty:sqlMoney_(qty),uom:x.UOM||pick(s,"DEFAULT_UOM","UNIT"),unitprice:sqlMoney_(price||amount/qty),disc:x.Discount?String(x.Discount):"",tax:x["Tax Code"]||"",taxamt:sqlMoney_(x["Tax Amount"]),taxinclusive:false,amount:sqlMoney_(amount),localamount:sqlMoney_(amount),account:x["Account Code"]||pick(s,"DEFAULT_ACCOUNT_CODE","510-000"),printable:true,changed:true}
@@ -66,7 +93,7 @@ return {dtlkey:0,dockey:0,seq:seq,itemcode:x["Item Code"]||"",location:"",batch:
 const invDate=sqlIsoDate_(doc.docdate||inv["Invoice Date"]||date);const dueDate=sqlIsoDate_(doc.duedate||inv["Due Date"]||invDate);
 const amount=sqlMoney_(doc.docamt||sqlUploadAmount_(inv));const project=pick(s,"DEFAULT_PROJECT","----"),agent=pick(s,"DEFAULT_AGENT","----");
 const ref="PAY-"+inv["Internal Invoice No"];return {dockey:0,docno:"",code:c["SQL Customer Code"],docdate:date,postdate:date,taxdate:date,project:project,paymentproject:project,description:"Payment for "+inv["Internal Invoice No"],agent:agent,area:"",paymentmethod:pick(s,"DEFAULT_PAYMENT_METHOD",""),journal:pick(s,"DEFAULT_PAYMENT_JOURNAL",""),chequenumber:inv["Payment Ref"]||"",currencycode:"",currencyrate:"1.00",docamt:amount,localdocamt:amount,bankacc:Number(pick(s,"DEFAULT_PAYMENT_BANK_ACC",0))||0,bankcharge:"0.00",bankchargeaccount:pick(s,"DEFAULT_PAYMENT_BANK_CHARGE_ACCOUNT",""),unappliedamt:"0.00",fromdoctype:"IV",fromdockey:Number(doc.dockey)||0,cancelled:false,status:0,nonrefundable:false,bounceddate:date,updatecount:0,docref1:ref,docref2:inv["Internal Invoice No"],changed:true,sdsknockoff:[{uniquekey:"",dockey:0,knockoffdockey:0,refdockey:Number(doc.dockey)||0,doctype:"IV",docdate:invDate,postdate:invDate,docno:doc.docno||"",agent:agent,area:"",docamt:amount,originaloutstanding:amount,currencycode:"",currencyrate:"1.00",outstanding:amount,koamt:amount,actuallocalkoamt:amount,localkoamt:amount,kotaxdate:date,gainloss:"0.00",gainlosspostdate:date,localoutstanding:amount,knockoff:true,docnoex:doc.docnoex||"",description:doc.description||"LeVince Chauffeur Service",duedate:dueDate,project:project,updatecount:0}
-]};} function sqlFindDoc_(path) {const r=sqlApiRequest_("GET",path,null,true);if (r.status===404) return null;
+]};} function sqlFindDoc_(path,config) {const r=sqlApiRequest_("GET",path,null,true,config);if (r.status===404) return null;
 return sqlFindObject_(r.data);} function sqlFindObject_(v) {if (!v||typeof v!=="object") return null;
 if (!Array.isArray(v)&&(v.dockey!=null||v.docno)) return v;const values=Array.isArray(v)?v:Object.keys(v).map(k=>v[k]);
 for (let i=0;i<values.length;i++) {const x=sqlFindObject_(values[i]);if (x) return x;} return null;

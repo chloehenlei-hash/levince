@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Building2, CheckCircle2, ClipboardList, CreditCard, Database, FilePlus2, Paperclip, ReceiptText } from "lucide-react";
+import { Building2, CheckCircle2, ClipboardList, CreditCard, Database, FilePlus2, Paperclip, ReceiptText, Search } from "lucide-react";
 import InvoiceGenerator from "./InvoiceGenerator.jsx";
 import { callWorkflowApi } from "./workflowApi.js";
 
@@ -316,6 +316,7 @@ export default function App() {
   });
   const [directBusy, setDirectBusy] = useState("");
   const [directResults, setDirectResults] = useState({});
+  const [directCustomerSearches, setDirectCustomerSearches] = useState({});
 
   const paidQueue = useMemo(
     () => invoices.filter((invoice) => invoice.Status === "Paid" && invoice["SQL Status"] !== "Uploaded to SQL"),
@@ -597,6 +598,54 @@ export default function App() {
     }));
   }
 
+  function updateDirectCustomerSearch(accountKey, patch) {
+    setDirectCustomerSearches((current) => ({
+      ...current,
+      [accountKey]: { ...(current[accountKey] || { query: "", results: [], message: "" }), ...patch },
+    }));
+  }
+
+  async function searchSqlCustomers(accountKey) {
+    const current = directCustomerSearches[accountKey] || {};
+    const query = textValue(current.query);
+    if (query.length < 2) {
+      updateDirectCustomerSearch(accountKey, { message: "Type at least 2 characters.", results: [] });
+      return;
+    }
+    setDirectBusy(`${accountKey}:customer-search`);
+    updateDirectCustomerSearch(accountKey, { message: "Searching SQL customers...", results: [] });
+    try {
+      const data = await callWorkflowApi("sqlSearchCustomers", { account: accountKey, query });
+      const results = data.customers || [];
+      updateDirectCustomerSearch(accountKey, {
+        results,
+        message: results.length ? `${results.length} SQL customer(s) found.` : "No SQL customer found.",
+      });
+    } catch (error) {
+      updateDirectCustomerSearch(accountKey, { message: error.message, results: [] });
+    } finally {
+      setDirectBusy("");
+    }
+  }
+
+  function selectSqlCustomer(accountKey, customer) {
+    updateDirectForm(accountKey, {
+      customerName: customer.customerName || "",
+      sqlCustomerCode: customer.sqlCustomerCode || "",
+      customerPhone: customer.customerPhone || "",
+      customerEmail: customer.customerEmail || "",
+      billingAddress: customer.billingAddress || "",
+      tin: customer.tin || "",
+      idType: customer.idType || "0",
+      idNo: customer.idNo || "",
+    });
+    updateDirectCustomerSearch(accountKey, {
+      query: customer.customerName || customer.sqlCustomerCode || "",
+      message: `Selected ${customer.customerName || customer.sqlCustomerCode}.`,
+      results: [],
+    });
+  }
+
   function directPayload(accountKey) {
     const form = directForms[accountKey] || createDirectForm();
     const amount = parseAmount(form.amount);
@@ -723,7 +772,9 @@ export default function App() {
     const config = DIRECT_SQL_ACCOUNTS[accountKey];
     const form = directForms[accountKey] || createDirectForm();
     const result = directResults[accountKey];
+    const customerSearch = directCustomerSearches[accountKey] || { query: "", results: [], message: "" };
     const testBusy = directBusy === `${accountKey}:test`;
+    const searchBusy = directBusy === `${accountKey}:customer-search`;
     const invoiceBusy = directBusy === `${accountKey}:invoice`;
     const paymentBusy = directBusy === `${accountKey}:payment`;
     return (
@@ -751,6 +802,42 @@ export default function App() {
                 <h2>Customer profile</h2>
               </div>
             </div>
+            <div className="sql-customer-search">
+              <label className="field">
+                <span>Search SQL customer</span>
+                <input
+                  value={customerSearch.query || ""}
+                  placeholder="Company name, customer code, phone"
+                  onChange={(event) => updateDirectCustomerSearch(accountKey, { query: event.target.value })}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      searchSqlCustomers(accountKey);
+                    }
+                  }}
+                />
+              </label>
+              <button type="button" className="secondary-button" onClick={() => searchSqlCustomers(accountKey)} disabled={Boolean(directBusy)}>
+                <Search aria-hidden="true" />
+                {searchBusy ? "Searching..." : "Search"}
+              </button>
+            </div>
+            {customerSearch.message ? <p className="sql-search-message">{customerSearch.message}</p> : null}
+            {customerSearch.results?.length ? (
+              <div className="sql-customer-results">
+                {customerSearch.results.map((customer) => (
+                  <button
+                    type="button"
+                    key={`${customer.sqlCustomerCode}-${customer.customerName}`}
+                    className="sql-customer-result"
+                    onClick={() => selectSqlCustomer(accountKey, customer)}
+                  >
+                    <strong>{customer.customerName || "Unnamed customer"}</strong>
+                    <span>{customer.sqlCustomerCode || "No code"}{customer.customerPhone ? ` · ${customer.customerPhone}` : ""}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <div className="direct-form-grid two">
               <label className="field">
                 <span>Customer / Company <b>*</b></span>

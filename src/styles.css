@@ -1595,6 +1595,65 @@ textarea:focus {
   min-height: 86px;
 }
 
+.sql-customer-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 10px;
+}
+
+.sql-customer-search .secondary-button {
+  min-height: 43px;
+}
+
+.sql-search-message {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.sql-customer-results {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.sql-customer-result {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  border: 1px solid #dfecd8;
+  border-radius: 8px;
+  padding: 11px 12px;
+  background: #f8fff9;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 4px 0 rgba(35, 122, 75, 0.1);
+}
+
+.sql-customer-result:hover {
+  border-color: #a8ddbf;
+  background: #effbf4;
+}
+
+.sql-customer-result strong,
+.sql-customer-result span {
+  display: block;
+}
+
+.sql-customer-result strong {
+  font-size: 0.95rem;
+}
+
+.sql-customer-result span {
+  color: #237a4b;
+  font-size: 0.8rem;
+  font-weight: 740;
+}
+
 .direct-total-strip {
   display: flex;
   align-items: center;
@@ -1674,6 +1733,10 @@ textarea:focus {
   }
 
   .direct-form-grid.two {
+    grid-template-columns: 1fr;
+  }
+
+  .sql-customer-search {
     grid-template-columns: 1fr;
   }
 }

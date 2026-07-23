@@ -1,5 +1,54 @@
 # Worklog
 
+## Direct SQL Invoice Pages - 2026-07-23
+
+- Added a new website navigation page `SQL Direct` for the first LeVince SQL API account.
+- Replaced the placeholder `Vincenology SDN BHD` page with the same direct SQL workbench using the `VINCENOLOGY_` Apps Script credential prefix.
+- The direct workbench supports customer/profile fields, one Sales Invoice line, invoice reference/date, payment date/ref, `Create SQL Invoice`, and `Create Customer Payment / OR`.
+- Added `Search SQL customer` to both direct pages. Chloe can search SQL customer/company records by name, code, or phone, then click a result to fill customer code, company name, phone, email, billing address, TIN, ID type, and ID no.
+- Added Apps Script action `sqlSearchCustomers`; it searches the relevant SQL account using the default LeVince credentials or `VINCENOLOGY_` credentials, then returns up to 10 deduplicated customer results.
+- Added Apps Script actions `sqlDirectCreateInvoice` and `sqlDirectCreatePayment`; SQL API keys remain in Script Properties and are never exposed in the GitHub Pages frontend.
+- Updated SQL API helpers so direct actions can use either the default LeVince credentials or the separate Vincenology credentials without changing the scheduled LeVince SQL upload flow.
+- Direct customer creation now auto-generates a short SQL customer code when Chloe leaves the optional customer-code field blank, then displays the actual SQL customer code returned by the API.
+- Ran production build successfully. Current generated assets include `dist/assets/index-ePEx4TCX.js`, `dist/assets/index-BNpNVX8b.css`, and `dist/assets/pdf-UA4vDWJ_.js`.
+- Ran Apps Script syntax checks for `apps-script/Code.gs`, `apps-script/SqlApi.gs`, and `apps-script/Scheduler.gs`.
+- Ran local Playwright smoke checks against `http://localhost:5173/` for `SQL Direct` and `Vincenology SDN BHD`; both pages show invoice, OR, and SQL customer search controls. Mobile check reported no horizontal overflow.
+
+## July SQL Upload Single Sheet - 2026-07-23
+
+- Simplified the standalone Google Sheet `July 2026 MBB Bank Reconciliation - Final` into one tab only: `SQL Upload List`.
+- Removed the previous multi-tab layout after flattening values: `Summary`, `Bank Statement`, `Matched Ready`, `Possible Matches`, `Need Desmond Claim`, and `Known Invoice Reference`.
+- `SQL Upload List` now has 77 bank receipt rows with paid status, claim status, invoice no, customer/company, contact person, phone, email, currency, details/order, unit, amount, paid amount RM, payment reference, notes, and Desmond follow-up fields.
+- Known invoice rows were enriched with available customer/contact/order data; unresolved rows use the bank payer/reference as temporary customer/details and remain marked `Possible` or `Need Desmond`.
+- Final Google Sheet URL: `https://docs.google.com/spreadsheets/d/1BhNpIGue8flmVE5_czMloLY2NBhrcIP-WChmZVxAsqk/edit`.
+
+## July Bank Statement Standalone Google Sheet - 2026-07-23
+
+- Pivoted away from auto-creating backlog invoices in the live invoice workflow for July.
+- Created a standalone reconciliation workbook from `VS MBB Rcd 26-07a.pdf` so Chloe can manually open official SQL invoices for July.
+- Built and imported `July 2026 MBB Bank Reconciliation - Final` as a native Google Sheet.
+- Tabs included: `Summary`, `Bank Statement`, `Matched Ready`, `Possible Matches`, `Need Desmond Claim`, and `Known Invoice Reference`.
+- Final summary: 77 visible bank receipt rows, RM 100,148.66 total; 4 matched/ready rows totaling RM 2,210.00; 10 possible matches totaling RM 10,480.00; 63 rows needing Desmond claim totaling RM 87,458.66.
+- Dates were stored as text in `dd/mm/yyyy` format to avoid Google Sheets timezone shifting imported dates.
+- Final Google Sheet URL: `https://docs.google.com/spreadsheets/d/1BhNpIGue8flmVE5_czMloLY2NBhrcIP-WChmZVxAsqk/edit`.
+- Local workbook artifact: `outputs/july-reconciliation/July 2026 MBB Bank Reconciliation.xlsx`.
+
+## MBB July Bank Statement Reconciliation - 2026-07-23
+
+- Extracted the attached July MBB receipt PDF and converted visible receipt rows into structured date/payee/amount entries.
+- Added one-time Apps Script helper `reconcileMbbJuly2026()` to `apps-script/Code.gs`.
+- The helper matches bank rows against invoice records by invoice number when available, otherwise by customer/payee name plus exact amount.
+- Safe matches are marked `Paid`, `Paid At` is updated to the bank statement date, and a `Payments` row is appended only if that invoice has no existing payment record.
+- Updated matching rule for the fastest month-end cleanup: if customer/name matching fails but the bank amount matches exactly one non-cancelled, non-uploaded invoice, that invoice is marked paid by `unique amount`.
+- The helper now writes a `Bank Reconciliation Review` sheet with `Updated` and `Review` rows, so Chloe can see what was changed and what still needs manual checking without digging through execution logs.
+- Upgraded the reconciliation helper into a month-end cleanup tool: if a bank receipt has no matching invoice, it creates a paid `General Public` backlog invoice using the bank date and bank amount, with `TIN = EI00000000010`, `Billing Address = NA`, and one money row.
+- Existing paid invoices/payment records are also updated to the bank statement date and bank amount, so Desmond's earlier paid marks can be corrected from the bank statement.
+- Newly created backlog invoices stay `Paid / Not Uploaded`, not `Ready for SQL`, so Chloe still confirms the SQL upload before anything is sent to SQL Account.
+- The review sheet now has `Updated`, `Created Backlog`, and `Review` sections.
+- Unmatched or ambiguous receipt rows are returned in a `review` list instead of being guessed.
+- Syntax check passed for the updated `Code.gs`; file is currently 133 lines.
+- This has not been applied to the live Google Sheet yet because the live sheet is accessed through the bound Apps Script, not the old visible Sheet ID. Chloe needs to paste/deploy the updated `Code.gs` and run `reconcileMbbJuly2026()` once in Apps Script.
+
 ## Foreign Currency Paid RM Flow - 2026-07-23
 
 - Added a paid-date input before marking invoices paid, so Desmond can choose the actual bank-in/payment date.
@@ -268,11 +317,19 @@ Create a GitHub-friendly invoice workflow website that:
 - Ran Vite production build successfully after the CSS-only UI polish. New committed build assets are `dist/assets/index-ChE-lwu4.js`, `dist/assets/index-Dppyg_px.css`, and `dist/assets/pdf-BP0nbkRs.js`.
 - Tested `RM1,000 - RM100 + 4%` in both pasted-line orders; both produce a `RM36` gateway charge. Vite production build completed successfully.
 - Tested contact-row fallback for Address replacing Email, Address + Tax Number replacing both missing contact fields, and Address filling a missing Phone row. Apps Script syntax and Vite production build passed; live Gemini still requires an API key and Apps Script redeployment.
+- Scraped the live GitHub Pages Invoices page after switching to July 2026 and Paid view; confirmed `Loaded 101 invoice(s)` and captured 79 Desmond-marked paid invoice rows into `tmp/live-july-paid-rows.json`.
+- Regenerated July MBB reconciliation from the live Paid Queue instead of the old empty/template Google Sheet source. Output workbook: `outputs/july-reconciliation/July 2026 MBB Reconciliation - Live Paid Queue.xlsx`.
+- New live-paid reconciliation result: 77 visible MBB receipt rows, 49 matched to live paid invoices, 28 need Desmond claim/review, 23 live paid RM invoices not matched to the visible MBB extract.
+- Patched `apps-script/SqlApi.gs` so SQL upload resolves customer by real SQL code/name first, creates missing customers, and no longer uploads invoices using unconfirmed local `300-C000xx` customer codes.
+- Patched `apps-script/SqlApi.gs` so invoices with deposits/discounts/negative rows upload to SQL as one final-total service line instead of separate negative rows.
+- Ran Apps Script syntax checks for `apps-script/SqlApi.gs`, `apps-script/Code.gs`, and `apps-script/Scheduler.gs` through the bundled Node runtime.
+- Rebuilt the live July bank reconciliation directly in the native Google Sheet `July 2026 MBB Bank Reconciliation - Final`, using the deployed Apps Script `listInvoices` data as the invoice source.
+- Applied strict reconciliation rules: only the 40 invoices genuinely marked `Paid` in the live workflow, excluded every `General Public` record, and removed all `Possible`/amount-only matches.
+- Confirmed 11 paid invoices against 12 July bank rows; one Creador invoice is backed by two receipts. Added complete customer/contact, invoice, item, quantity, amount, and payment details for SQL entry.
+- Kept the result in one sheet only (`SQL Upload List`): 11 `MATCHED - Ready for SQL`, 65 unmatched bank rows for Desmond, and 29 genuine paid invoices whose bank receipt is still unidentified.
 
 ## Exact Next Steps
-1. On the SQL Windows computer, install/start SQL API Service and complete `Test Connection = OK`.
-2. Create the dedicated SQL `APIUser`, generate its Access Key/Secret Key, and add them to Apps Script Script Properties using `docs/SQL_API_SETUP.md`.
-3. Confirm `sqlConnectionStatus` while no SQL Connect user is logged in, then run `sqlSyncPaidInvoices` against one controlled paid MYR invoice and verify it in SQL Account.
-4. Add `Scheduler.gs` to the live Apps Script project and run `installSqlSyncTriggers` once after the controlled upload succeeds.
-5. After the controlled test passes, add authenticated website controls for direct SQL upload; keep the current Excel copy/import route as fallback.
-6. Ask Chloe for the cropped Sarah / Corpway invoice number before importing that one.
+1. Use the single `SQL Upload List` sheet: upload only green `MATCHED - Ready for SQL` rows and let Desmond identify the two `NEED DESMOND` groups.
+2. Paste the latest `apps-script/SqlApi.gs` into Apps Script before the next SQL API upload attempt so missing customers are created/resolved correctly.
+3. Re-run SQL upload during the quiet SQL window after the Apps Script update.
+4. Keep foreign-currency paid invoices out of direct SQL upload unless their MYR received amount and payment date are filled.
