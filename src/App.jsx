@@ -31,8 +31,12 @@ const DIRECT_SQL_ACCOUNTS = {
 };
 const DIRECT_SQL_HISTORY_KEY = "levince-direct-sql-documents-v1";
 const DIRECT_CUSTOMER_FIELDS = new Set([
+  "companyName",
+  "individualName",
   "customerName",
   "sqlCustomerCode",
+  "sqlCustomerName",
+  "customerMode",
   "customerPhone",
   "customerEmail",
   "billingAddress",
@@ -90,6 +94,10 @@ function parseAmount(value) {
 function textValue(value) {
   const text = String(value || "").trim();
   return text === "-" ? "" : text;
+}
+
+function directIdentityName(form = {}) {
+  return textValue(form.companyName) || textValue(form.individualName) || textValue(form.customerName);
 }
 
 function loadDirectSqlHistory() {
@@ -179,15 +187,21 @@ function directDescriptionFromInvoice(parsed) {
 
 function directFormFromParsedInvoice(parsed, currentForm) {
   const invoice = normaliseInvoiceData(parsed);
-  const customerName = textValue(invoice.companyName) || textValue(invoice.customerName);
+  const companyName = textValue(invoice.companyName);
+  const individualName = textValue(invoice.customerName);
+  const customerName = companyName || individualName;
   const billingAddress = parsedContactField(invoice, "address");
   const tin = parsedContactField(invoice, "tax|tin");
   const amount = getInvoiceTotal(invoice);
   return {
     ...currentForm,
     docRef: textValue(invoice.receiptNumber) || currentForm.docRef || directReference(),
+    companyName,
+    individualName,
     customerName: customerName || currentForm.customerName,
     sqlCustomerCode: customerName && normaliseLookupValue(customerName) !== normaliseLookupValue(currentForm.customerName) ? "" : currentForm.sqlCustomerCode,
+    sqlCustomerName: customerName && normaliseLookupValue(customerName) !== normaliseLookupValue(currentForm.customerName) ? "" : currentForm.sqlCustomerName,
+    customerMode: customerName && normaliseLookupValue(customerName) !== normaliseLookupValue(currentForm.customerName) ? "" : currentForm.customerMode,
     customerEmail: /@/.test(invoice.email || "") ? invoice.email : currentForm.customerEmail,
     customerPhone: textValue(invoice.phone) && invoice.phone !== "-" ? invoice.phone : currentForm.customerPhone,
     billingAddress: billingAddress || currentForm.billingAddress,
@@ -395,8 +409,12 @@ function fileToProof(file) {
 function createDirectForm() {
   return {
     docRef: directReference(),
+    companyName: "",
+    individualName: "",
     customerName: "",
     sqlCustomerCode: "",
+    sqlCustomerName: "",
+    customerMode: "",
     customerPhone: "",
     customerEmail: "",
     billingAddress: "",
@@ -736,8 +754,12 @@ export default function App() {
 
   function directCustomerSignature(form) {
     return [
+      form.companyName,
+      form.individualName,
       form.customerName,
       form.sqlCustomerCode,
+      form.sqlCustomerName,
+      form.customerMode,
       form.customerPhone,
       form.customerEmail,
       form.billingAddress,
@@ -875,9 +897,15 @@ export default function App() {
   }
 
   function selectSqlCustomer(accountKey, customer, options = {}) {
+    const currentForm = directForms[accountKey] || createDirectForm();
+    const hasCompany = Boolean(textValue(currentForm.companyName));
     const nextForm = {
+      companyName: hasCompany ? customer.customerName || currentForm.companyName : "",
+      individualName: hasCompany ? currentForm.individualName : customer.customerName || currentForm.individualName,
       customerName: customer.customerName || "",
       sqlCustomerCode: customer.sqlCustomerCode || "",
+      sqlCustomerName: customer.customerName || "",
+      customerMode: "existing",
       customerPhone: customer.customerPhone || "",
       customerEmail: customer.customerEmail || "",
       billingAddress: customer.billingAddress || "",
@@ -886,7 +914,7 @@ export default function App() {
       idNo: customer.idNo || "",
     };
     updateDirectForm(accountKey, nextForm);
-    markDirectCustomerChecked(accountKey, { ...(directForms[accountKey] || createDirectForm()), ...nextForm }, `SQL customer ready: ${customer.customerName || customer.sqlCustomerCode}.`);
+    markDirectCustomerChecked(accountKey, { ...currentForm, ...nextForm }, `SQL customer ready: ${customer.customerName || customer.sqlCustomerCode}.`);
     updateDirectCustomerSearch(accountKey, {
       query: customer.customerName || customer.sqlCustomerCode || "",
       message: options.message || `Selected ${customer.customerName || customer.sqlCustomerCode}.`,
@@ -906,8 +934,11 @@ export default function App() {
       const data = await callWorkflowApi("sqlDirectEnsureCustomer", {
         account: accountKey,
         customer: {
-          customerName: textValue(form.customerName),
+          companyName: textValue(form.companyName),
+          individualName: textValue(form.individualName),
+          customerName: directIdentityName(form),
           sqlCustomerCode: textValue(form.sqlCustomerCode),
+          sqlCustomerName: textValue(form.sqlCustomerName),
           customerPhone: textValue(form.customerPhone),
           customerEmail: textValue(form.customerEmail),
           billingAddress: textValue(form.billingAddress),
@@ -915,10 +946,15 @@ export default function App() {
           idType: textValue(form.idType) || "0",
           idNo: textValue(form.idNo),
         },
+        invoice: {
+          amount: parseAmount(form.amount),
+        },
       });
       const patch = {
-        customerName: data.customerName || form.customerName,
+        customerName: directIdentityName(form),
         sqlCustomerCode: data.sqlCustomerCode || form.sqlCustomerCode,
+        sqlCustomerName: data.sqlCustomerName || data.customerName || form.sqlCustomerName,
+        customerMode: data.customerMode || "existing",
         customerPhone: data.customerPhone || form.customerPhone,
         customerEmail: data.customerEmail || form.customerEmail,
         billingAddress: data.billingAddress || form.billingAddress,
@@ -928,8 +964,8 @@ export default function App() {
       };
       const checkedForm = { ...form, ...patch };
       setDirectForms((current) => ({ ...current, [accountKey]: checkedForm }));
-      const readyMessage = data.customerFallback
-        ? `Using fallback SQL customer ${patch.sqlCustomerCode} for ${patch.customerName}. Customer master was not created.`
+      const readyMessage = data.customerMode === "cash-sales"
+        ? `Cash Sales customer ready: ${patch.sqlCustomerCode}. Original customer: ${directIdentityName(form)}.`
         : `SQL customer ready: ${patch.sqlCustomerCode}.`;
       markDirectCustomerChecked(accountKey, checkedForm, readyMessage);
       updateDirectCustomerSearch(accountKey, {
@@ -967,8 +1003,12 @@ export default function App() {
       account: accountKey,
       docRef: textValue(form.docRef) || directReference(),
       customer: {
-        customerName: textValue(form.customerName),
+        companyName: textValue(form.companyName),
+        individualName: textValue(form.individualName),
+        customerName: directIdentityName(form),
         sqlCustomerCode: textValue(form.sqlCustomerCode),
+        sqlCustomerName: textValue(form.sqlCustomerName),
+        customerMode: textValue(form.customerMode),
         customerPhone: textValue(form.customerPhone),
         customerEmail: textValue(form.customerEmail),
         billingAddress: textValue(form.billingAddress),
@@ -1311,11 +1351,38 @@ RM190`}
             ) : null}
             <div className="direct-form-grid two">
               <label className="field">
-                <span>Customer / Company <b>*</b></span>
+                <span>Company Name</span>
                 <input
-                  value={form.customerName}
-                  onChange={(event) => updateDirectForm(accountKey, { customerName: event.target.value, sqlCustomerCode: "" })}
-                  onBlur={() => autoResolveSqlCustomer(accountKey, form.customerName)}
+                  value={form.companyName}
+                  placeholder="Leave blank for an individual"
+                  onChange={(event) => {
+                    const companyName = event.target.value;
+                    updateDirectForm(accountKey, {
+                      companyName,
+                      customerName: textValue(companyName) || textValue(form.individualName),
+                      sqlCustomerCode: "",
+                      sqlCustomerName: "",
+                      customerMode: "",
+                    });
+                  }}
+                  onBlur={() => autoResolveSqlCustomer(accountKey, textValue(form.companyName) || textValue(form.individualName))}
+                />
+              </label>
+              <label className="field">
+                <span>Individual / Contact Name <b>*</b></span>
+                <input
+                  value={form.individualName}
+                  onChange={(event) => {
+                    const individualName = event.target.value;
+                    updateDirectForm(accountKey, {
+                      individualName,
+                      customerName: textValue(form.companyName) || textValue(individualName),
+                      sqlCustomerCode: "",
+                      sqlCustomerName: "",
+                      customerMode: "",
+                    });
+                  }}
+                  onBlur={() => autoResolveSqlCustomer(accountKey, textValue(form.companyName) || textValue(form.individualName))}
                 />
               </label>
               <label className="field">
