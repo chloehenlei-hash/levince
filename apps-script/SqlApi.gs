@@ -1,4 +1,4 @@
-const SQL_API_BACKEND_VERSION="sql-direct-customer-rules-20260726";const SQL_API_DEFAULTS={host:"https://api.sql.my",region:"ap-southeast-5",service:"sqlaccount"}
+const SQL_API_BACKEND_VERSION="sql-direct-query-filters-20260726";const SQL_API_DEFAULTS={host:"https://api.sql.my",region:"ap-southeast-5",service:"sqlaccount"}
 ;function sqlApiConfig_(prefix) {prefix=prefix||"";const p=PropertiesService.getScriptProperties();
 return {host:(p.getProperty(prefix+"SQL_API_HOST")||SQL_API_DEFAULTS.host).replace(/\/+$/,""),region:p.getProperty(prefix+"SQL_API_REGION")||SQL_API_DEFAULTS.region,service:p.getProperty(prefix+"SQL_API_SERVICE")||SQL_API_DEFAULTS.service,accessKey:(p.getProperty(prefix+"SQL_API_ACCESS_KEY")||"").trim(),secretKey:(p.getProperty(prefix+"SQL_API_SECRET_KEY")||"").trim(),cashSalesCode:(p.getProperty(prefix+"SQL_CASH_SALES_CODE")||"CASH SALES").trim()}
 ;} function sqlConnectionStatus() {return sqlConnectionStatusFor_("");} function vincenologySqlConnectionStatus() {return sqlConnectionStatusFor_("VINCENOLOGY_");
@@ -8,7 +8,7 @@ return {host:(p.getProperty(prefix+"SQL_API_HOST")||SQL_API_DEFAULTS.host).repla
 } function sqlSearchCustomers(q) {const query=String(q.query||"").trim();if (query.length<2) return {ok:true,customers:[]};const c=sqlApiConfig_(sqlDirectPrefix_(q)),seen={},out=[];
 sqlCustomerSearchPaths_(query).forEach(path=>{try {const r=sqlApiRequest_("GET",path,null,true,c);sqlFlattenObjects_(r.data).forEach(x=>{const row=sqlCustomerSummary_(x),key=(row.sqlCustomerCode||"")+"|"+(row.customerName||"");if (!row.customerName&&!row.sqlCustomerCode) return;if (!sqlCustomerSearchMatch_(row,query)) return;if (seen[key]) return;seen[key]=true;out.push(row);});} catch (_) {}});
 return {ok:true,customers:out.slice(0,10)};
-} function sqlCustomerSearchPaths_(q) {const e=encodeURIComponent(q);return ["/customer/"+e,"/customer?code="+e,"/customer?companyname="+e,"/customer?search="+e,"/customer?keyword="+e];
+} function sqlCustomerSearchPaths_(q) {const e=encodeURIComponent(q);return ["/customer/"+e,"/customer/?code="+e,"/customer/?companyname="+e,"/customer/?search="+e,"/customer/?keyword="+e];
 } function sqlCustomerSummary_(x) {const b=sqlCustomerBranch_(x),addr=[val_(b,"address1","ADDRESS1","_ADDRESS1","Address1"),val_(b,"address2","ADDRESS2","_ADDRESS2","Address2"),val_(b,"address3","ADDRESS3","_ADDRESS3","Address3"),val_(b,"address4","ADDRESS4","_ADDRESS4","Address4")].filter(Boolean).join("\n");
 return {sqlCustomerCode:sqlCustomerCode_(x)||sqlCustomerCode_(b),customerName:val_(x,"companyname","COMPANYNAME","name","Name","companyName","CompanyName"),customerPhone:phone(val_(b,"phone1","PHONE1","_PHONE1","mobile","MOBILE","_MOBILE")||val_(x,"phone1","PHONE1","mobile","MOBILE")),customerEmail:val_(b,"email","EMAIL","_EMAIL")||val_(x,"email","EMAIL"),billingAddress:addr,tin:val_(x,"tin","TIN","TIN(14)"),idType:val_(x,"idtype","IDTYPE"),idNo:val_(x,"idno","IDNO","IDNO(20)")};
 } function sqlCustomerSearchMatch_(row,query) {const q=sqlNormLoose_(query),digits=String(query||"").replace(/\D+/g,"");if (!q&&!digits) return false;
@@ -30,18 +30,18 @@ if (!pay.dockey) throw new Error("Customer Payment / OR DocKey is missing.");log
 return {ok:true,backendVersion:SQL_API_BACKEND_VERSION,docRef:d.ref,sqlCustomerCode:out.customer["SQL Customer Code"],sqlCustomerName:out.customer["SQL Customer Name"]||out.customer["Customer Name"],customerMode:out.customer["Customer Mode"]||"existing",sqlDocNo:out.doc.docno||"",sqlDocKey:out.doc.dockey||"",sqlPaymentDocNo:pay.docno||"",sqlPaymentDocKey:pay.dockey||""};} catch (err) {throw new Error("Backend "+SQL_API_BACKEND_VERSION+": "+(err.message||String(err)));}}
 function sqlDirectListDocuments(q) {const c=sqlApiConfig_(sqlDirectPrefix_(q)),doc=sqlDirectFindInvoiceDoc_(q,c);return {ok:true,documents:doc?[sqlDirectDocSummary_(doc)]:[]};
 } function sqlDirectGetInvoicePdf(q) {const c=sqlApiConfig_(sqlDirectPrefix_(q)),doc=sqlDirectFindInvoiceDoc_(q,c),key=doc&&sqlDocKey_(doc);if (!key) throw new Error("SQL invoice DocKey is required before PDF download.");
-const paths=["/salesinvoice/pdf/"+encodeURIComponent(key),"/salesinvoice/"+encodeURIComponent(key)+"/pdf","/salesinvoice/"+encodeURIComponent(key)+".pdf","/salesinvoice?dockey="+encodeURIComponent(key)+"&format=pdf"];let last="";
+const paths=["/salesinvoice/pdf/"+encodeURIComponent(key),"/salesinvoice/"+encodeURIComponent(key)+"/pdf","/salesinvoice/"+encodeURIComponent(key)+".pdf","/salesinvoice/?dockey="+encodeURIComponent(key)+"&format=pdf"];let last="";
 for (let i=0;i<paths.length;i++) {try {const r=sqlApiRawRequest_("GET",paths[i],null,true,c),bytes=r.blob.getBytes(),type=String(r.headers["Content-Type"]||r.headers["content-type"]||"application/pdf");if (bytes.length&&(/pdf/i.test(type)||(bytes[0]===37&&bytes[1]===80&&bytes[2]===68&&bytes[3]===70))) return {ok:true,filename:"SQL Invoice "+(doc.docno||q.docRef||key)+".pdf",mimeType:"application/pdf",base64:Utilities.base64Encode(bytes)};last="PDF endpoint returned "+type;} catch (err) {last=err.message||String(err);}}
 throw new Error("Unable to download SQL invoice PDF. "+last);
 } function sqlDirectDeleteInvoice(q) {const c=sqlApiConfig_(sqlDirectPrefix_(q)),doc=sqlDirectFindInvoiceDoc_(q,c),payKey=String(q.sqlPaymentDocKey||"").trim(),payNo=String(q.sqlPaymentDocNo||"").trim(),docKey=doc&&sqlDocKey_(doc),docNo=doc&&(doc.docno||doc.DOCNO||q.sqlDocNo);
-if (payKey||payNo) sqlDeleteAny_([payKey?"/customerpayment/"+encodeURIComponent(payKey):"",payKey?"/customerpayment?dockey="+encodeURIComponent(payKey):"",payNo?"/customerpayment?docno="+encodeURIComponent(payNo):""],c,true);
+if (payKey||payNo) sqlDeleteAny_([payKey?"/customerpayment/"+encodeURIComponent(payKey):"",payKey?"/customerpayment/?dockey="+encodeURIComponent(payKey):"",payNo?"/customerpayment/?docno="+encodeURIComponent(payNo):""],c,true);
 if (!docKey&&!docNo) throw new Error("SQL invoice DocKey or DocNo is required before delete.");
-sqlDeleteAny_([docKey?"/salesinvoice/"+encodeURIComponent(docKey):"",docKey?"/salesinvoice?dockey="+encodeURIComponent(docKey):"",docNo?"/salesinvoice?docno="+encodeURIComponent(docNo):""],c,false);
+sqlDeleteAny_([docKey?"/salesinvoice/"+encodeURIComponent(docKey):"",docKey?"/salesinvoice/?dockey="+encodeURIComponent(docKey):"",docNo?"/salesinvoice/?docno="+encodeURIComponent(docNo):""],c,false);
 log(q,"sqlDirectDeleteInvoice","",q.docRef||docNo,"Deleted SQL invoice "+(docNo||docKey));return {ok:true,deleted:true,sqlDocNo:docNo||"",sqlDocKey:docKey||""};
-} function sqlDirectCreateInvoice_(d,s,config) {const customer=sqlDirectResolveCustomer_(d.customer,s,config);sqlDirectAlignInvoiceCustomer_(d,customer,config);const lookup="/salesinvoice?docref1="+encodeURIComponent(d.ref),existing=sqlFindDoc_(lookup,config);
+} function sqlDirectCreateInvoice_(d,s,config) {const customer=sqlDirectResolveCustomer_(d.customer,s,config);sqlDirectAlignInvoiceCustomer_(d,customer,config);const lookup="/salesinvoice/?docref1="+encodeURIComponent(d.ref),existing=sqlFindDoc_(lookup,config);
 let directInvoiceData;try {directInvoiceData=existing||sqlCreateSalesInvoice_(sqlInvoicePayload_(d.inv,[d.item],customer,s),lookup,config);} catch (err) {throw new Error("Create sales invoice failed: "+(err.message||String(err)));}
 const doc=sqlFindObject_(directInvoiceData)||sqlFindDoc_(lookup,config)||{};if (!doc.dockey) throw new Error("Sales Invoice was created/found, but SQL DocKey is missing.");return {customer:customer,doc:doc};
-} function sqlDirectFindInvoiceDoc_(q,config) {const tries=[];if (q.sqlDocKey) tries.push("/salesinvoice/"+encodeURIComponent(q.sqlDocKey));if (q.sqlDocNo) tries.push("/salesinvoice?docno="+encodeURIComponent(q.sqlDocNo));if (q.docRef) tries.push("/salesinvoice?docref1="+encodeURIComponent(q.docRef));
+} function sqlDirectFindInvoiceDoc_(q,config) {const tries=[];if (q.sqlDocKey) tries.push("/salesinvoice/"+encodeURIComponent(q.sqlDocKey));if (q.sqlDocNo) tries.push("/salesinvoice/?docno="+encodeURIComponent(q.sqlDocNo));if (q.docRef) tries.push("/salesinvoice/?docref1="+encodeURIComponent(q.docRef));
 for (let i=0;i<tries.length;i++) {try {const doc=sqlFindDoc_(tries[i],config);if (doc) return doc;} catch (_) {}} return null;
 } function sqlDirectDocSummary_(doc) {return {docRef:doc.docref1||doc.DOCREF1||"",sqlDocNo:doc.docno||doc.DOCNO||"",sqlDocKey:sqlDocKey_(doc),customerName:doc.companyname||doc.COMPANYNAME||"",sqlCustomerCode:sqlCustomerCode_(doc),invoiceDate:doc.docdate||doc.DOCDATE||"",amount:doc.docamt||doc.localdocamt||doc.DOCAMT||0};
 } function sqlDirectResolveCustomer_(c,s,config,context) {context=context||{};const name=String(c["Original Customer Name"]||c["Customer Name"]||"").trim(),oldCode=String(c["SQL Customer Code"]||"").trim();let found=null;
@@ -62,7 +62,7 @@ if (sqlName) {c["SQL Customer Name"]=sqlName;c["Customer Name"]=sqlName;d.inv["C
 const invs=rows(T.inv).filter(x=>x.Status==="Paid"&&x["SQL Status"]==="Ready for SQL");const customers=syncCustomers(invs,s),cm=custMap(customers),result={ok:true,uploaded:[],failed:[]}
 ;invs.forEach(inv=>{try {sqlUploadAmount_(inv);let c=cm[ckey(inv["Customer Name"])];if (!c) throw new Error("Customer record is missing.");
 c=sqlResolveCustomer_(c,s);updateInv(inv["Invoice ID"],{"SQL Customer Code":c["SQL Customer Code"],"Updated At":now()}
-);const lookup="/salesinvoice?docref1="+encodeURIComponent(inv["Internal Invoice No"]);const existing=sqlFindDoc_(lookup);
+);const lookup="/salesinvoice/?docref1="+encodeURIComponent(inv["Internal Invoice No"]);const existing=sqlFindDoc_(lookup);
 const syncInvoiceData=existing||sqlCreateSalesInvoice_(sqlInvoicePayload_(inv,allItems,c,s),lookup);
 const doc=sqlFindObject_(syncInvoiceData)||sqlFindDoc_(lookup)||{};if (!doc.dockey) throw new Error("Sales Invoice was created/found, but SQL DocKey is missing.");
 updateInv(inv["Invoice ID"],{"SQL Doc No":doc.docno||"","SQL Doc Key":doc.dockey||"","SQL API Error":"","Updated At":now()}
@@ -77,7 +77,7 @@ result.failed.push({invoiceNo:inv["Internal Invoice No"],error:err.message||Stri
 const f=findInv(q.invoiceId),inv=f.inv,s=settings();sqlUploadAmount_(inv);
 const customers=syncCustomers([inv],s);let c=custMap(customers)[ckey(inv["Customer Name"])];
 if (!c) throw new Error("Customer record is missing.");c=sqlResolveCustomer_(c,s);updateInv(inv["Invoice ID"],{"SQL Customer Code":c["SQL Customer Code"],"Updated At":now()}
-);const lookup="/salesinvoice?docref1="+encodeURIComponent(inv["Internal Invoice No"]);const existing=sqlFindDoc_(lookup);
+);const lookup="/salesinvoice/?docref1="+encodeURIComponent(inv["Internal Invoice No"]);const existing=sqlFindDoc_(lookup);
 const retryInvoiceData=existing||sqlCreateSalesInvoice_(sqlInvoicePayload_(inv,rows(T.item),c,s),lookup);
 const doc=sqlFindObject_(retryInvoiceData)||sqlFindDoc_(lookup)||{};if (!doc.dockey) throw new Error("Sales Invoice exists, but SQL DocKey is missing.");
 updateInv(inv["Invoice ID"],{"SQL Doc No":doc.docno||"","SQL Doc Key":doc.dockey||"","SQL API Error":"","Updated At":now()}
@@ -88,9 +88,9 @@ return {ok:true,invoiceNo:inv["Internal Invoice No"],sqlDocNo:doc.docno||"",sqlP
 ;} catch (err) {updateInv(inv["Invoice ID"],{"SQL API Error":"OR retry failed: "+(err.message||String(err)),"Updated At":now()}
 );log(q,"retrySqlPaymentError",inv["Invoice ID"],inv["Internal Invoice No"],err.message||String(err));
 throw err;}} function sqlEnsureCustomerPayment_(inv,c,invoiceDoc,s,config) {const ref="PAY-"+inv["Internal Invoice No"];
-const existing=sqlFindDoc_("/customerpayment?docref1="+encodeURIComponent(ref),config);if (existing) return existing;
+const existing=sqlFindDoc_("/customerpayment/?docref1="+encodeURIComponent(ref),config);if (existing) return existing;
 const created=sqlApiRequest_("POST","/customerpayment",sqlPaymentPayload_(inv,c,invoiceDoc,s),false,config).data;
-return sqlFindObject_(created)||sqlFindDoc_("/customerpayment?docref1="+encodeURIComponent(ref),config)||{}
+return sqlFindObject_(created)||sqlFindDoc_("/customerpayment/?docref1="+encodeURIComponent(ref),config)||{}
 ;} function sqlDeleteAny_(paths,config,optional) {let last="";for (let i=0;i<paths.length;i++) {if (!paths[i]) continue;try {const r=sqlApiRequest_("DELETE",paths[i],null,true,config);if (r.status>=200&&r.status<300) return true;last="SQL API "+r.status;} catch (err) {last=err.message||String(err);}}
 if (optional) return false;throw new Error("Unable to delete SQL document. "+last);
 ;} function sqlResolveCustomer_(c,s,config) {let found=null;const oldCode=String(c["SQL Customer Code"]||"").trim(),name=c["Customer Name"];
@@ -102,7 +102,7 @@ return sqlPatchCustomer_(c,{"SQL Customer Code":code,Status:"Uploaded","Uploaded
 );} function sqlFindCustomerByCode_(code,config) {if (!code) return null;const wanted=sqlNorm_(code),r=sqlApiRequest_("GET","/customer/"+encodeURIComponent(code),null,true,config);
 if (r.status<200||r.status>=300) return null;return sqlFlattenObjects_(r.data).find(x=>sqlNorm_(sqlCustomerCode_(x))===wanted)||null;
 } function sqlFindCustomerByName_(name,config) {const target=sqlNorm_(name);if (!target) return null;
-const paths=["/customer?companyname="+encodeURIComponent(name),"/customer?search="+encodeURIComponent(name),"/customer?keyword="+encodeURIComponent(name)];
+const paths=["/customer/?companyname="+encodeURIComponent(name),"/customer/?search="+encodeURIComponent(name),"/customer/?keyword="+encodeURIComponent(name)];
 for (let i=0;i<paths.length;i++) {try {const r=sqlApiRequest_("GET",paths[i],null,true,config);const exact=sqlFindCustomerObject_(r.data,name,"");
 if (exact) return exact;} catch (_) {}} return null;} function sqlPatchCustomer_(c,patch) {const sh=ss().getSheetByName(T.cust),vals=sh.getDataRange().getValues(),h=vals[0];
 const keyIx=h.indexOf("Customer Key"),key=String(c["Customer Key"]||"");for (let r=1;r<vals.length;
