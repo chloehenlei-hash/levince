@@ -285,104 +285,11 @@ function monthLabel(key) {
   return `${MONTH_NAMES[index]} ${year}`;
 }
 
-function getWorkflowCustomerName(invoice) {
-  return textValue(invoice.companyName) || textValue(invoice.customerName);
-}
-
-function flattenItems(invoice) {
-  const rows = [];
-  (invoice.serviceGroups || []).forEach((group) => {
-    (group.dates || []).forEach((dateGroup) => {
-      (dateGroup.lines || []).forEach((line) => {
-        const amount = parseAmount(line.amount);
-        if (!String(line.amount || "").trim()) return;
-        const parts = [group.heading, dateGroup.date, line.description].map(textValue).filter(Boolean);
-        rows.push({
-          itemCode: "",
-          accountCode: "",
-          description: parts.join(" - "),
-          quantity: textValue(line.qty),
-          uom: "UNIT",
-          unitPrice: amount,
-          discount: 0,
-          taxCode: "",
-          taxAmount: 0,
-          amount,
-        });
-      });
-    });
-  });
-  return rows.length ? rows : [{
-    description: invoice.invoiceTitle || "Service",
-    quantity: 1,
-    uom: "UNIT",
-    unitPrice: parseAmount(invoice.totalOverride),
-    discount: 0,
-    taxCode: "",
-    taxAmount: 0,
-    amount: parseAmount(invoice.totalOverride),
-  }];
-}
-
-function invoiceToWorkflowPayload({ invoice, filename }) {
-  const items = flattenItems(invoice);
-  const subtotal = items.reduce((sum, item) => sum + parseAmount(item.amount), 0);
-  const totalOverride = parseAmount(invoice.totalOverride);
-  const total = totalOverride > 0 ? totalOverride : subtotal;
-  const customerName = getWorkflowCustomerName(invoice);
-  const emailLabel = String(invoice.headerLabels?.email || "").toLowerCase();
-  const phoneLabel = String(invoice.headerLabels?.phone || "").toLowerCase();
-  const emailValue = textValue(invoice.email);
-  const phoneValue = textValue(invoice.phone);
-  const labelledValues = [
-    { label: emailLabel, value: emailValue },
-    { label: phoneLabel, value: phoneValue },
-  ];
-  const valueFor = (pattern) => labelledValues.find((entry) => pattern.test(entry.label))?.value || "";
-
-  return {
-    invoice: {
-      documentType: invoice.documentLabel || "INVOICE",
-      invoiceNo: textValue(invoice.receiptNumber),
-      invoiceDate: textValue(invoice.invoiceDate),
-      dueDate: "",
-      customerName,
-      sqlCustomerCode: "",
-      customerEmail: valueFor(/email/),
-      customerPhone: valueFor(/phone|mobile|tel|contact/),
-      billingAddress: valueFor(/address/),
-      tin: valueFor(/tax|tin|trn|vat/),
-      idType: "",
-      idNo: "",
-      terms: "",
-      pdfUrl: filename || "",
-      notes: invoice.notesTitle || invoice.invoiceTitle || "Payment request",
-      currency: invoice.currency || "RM",
-      subtotal,
-      discount: 0,
-      tax: 0,
-      total,
-      items,
-    },
-    items,
-  };
-}
-
 function statusClass(status) {
   return String(status || "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
-}
-
-function confirmOverwrite(existing, nextInvoice) {
-  const oldCustomer = existing?.customerName || "Unknown customer";
-  const oldTotal = money(existing?.total, nextInvoice.currency);
-  const nextCustomer = nextInvoice.customerName || "Unknown customer";
-  const nextTotal = money(nextInvoice.total, nextInvoice.currency);
-  return window.confirm(
-    `Invoice ${nextInvoice.invoiceNo} already exists.\n\nOld: ${oldCustomer} - ${oldTotal}\nNew: ${nextCustomer} - ${nextTotal}\n\nOverwrite the old record?`,
-  );
 }
 
 function fileToProof(file) {
@@ -435,7 +342,6 @@ function createDirectForm() {
 export default function App() {
   const [view, setView] = useState("new");
   const [message, setMessage] = useState("");
-  const [saveStatus, setSaveStatus] = useState("");
   const [invoices, setInvoices] = useState([]);
   const [items, setItems] = useState([]);
   const [filter, setFilter] = useState("active");
@@ -559,36 +465,6 @@ export default function App() {
     const dateB = Date.parse(b["Updated At"] || b["Created At"] || b["Sent At"] || b["Invoice Date"] || "");
     if (Number.isFinite(dateA) || Number.isFinite(dateB)) return (Number.isFinite(dateB) ? dateB : 0) - (Number.isFinite(dateA) ? dateA : 0);
     return Number(String(b["Internal Invoice No"] || "").replace(/\D/g, "")) - Number(String(a["Internal Invoice No"] || "").replace(/\D/g, ""));
-  }
-
-  async function saveGeneratedInvoice(payload) {
-    try {
-      const mapped = invoiceToWorkflowPayload(payload);
-      if (!mapped.invoice.invoiceNo) {
-        setSaveStatus("Document number is required before saving.");
-        return false;
-      }
-      if (!mapped.invoice.customerName) {
-        setSaveStatus("Customer name is required before saving.");
-        return false;
-      }
-      setSaveStatus("Saving...");
-      try {
-        await callWorkflowApi("createInvoice", mapped);
-        setSaveStatus(`Saved ${mapped.invoice.invoiceNo} to workflow.`);
-      } catch (error) {
-        if (error.data?.code !== "DUPLICATE_INVOICE" || !confirmOverwrite(error.data.existing, mapped.invoice)) {
-          throw error;
-        }
-        await callWorkflowApi("createInvoice", { ...mapped, overwrite: true });
-        setSaveStatus(`Overwrote ${mapped.invoice.invoiceNo} in workflow.`);
-      }
-      await loadInvoices();
-      return true;
-    } catch (error) {
-      setSaveStatus(error.message);
-      return false;
-    }
   }
 
   async function markPaid(invoice) {
@@ -1628,7 +1504,7 @@ RM190`}
       </div>
 
       {view === "new" ? (
-        <InvoiceGenerator onSaveInvoice={saveGeneratedInvoice} saveStatus={saveStatus} existingInvoices={invoices} />
+        <InvoiceGenerator existingInvoices={invoices} />
       ) : null}
 
       {view === "invoices" ? (

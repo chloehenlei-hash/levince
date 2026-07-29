@@ -84,7 +84,7 @@ function Section({ title, children }) {
   );
 }
 
-export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "", existingInvoices = [] }) {
+export default function InvoiceGenerator({ existingInvoices = [] }) {
   const [invoice, setInvoice] = useState(readStoredDraft);
   const [previewUrl, setPreviewUrl] = useState("");
   const [generatedBlob, setGeneratedBlob] = useState(null);
@@ -99,8 +99,6 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "", exist
   const [tableLayout, setTableLayout] = useState("normal");
   const lastPreviewUrl = useRef("");
   const pdfInputRef = useRef(null);
-  const generatedInvoiceRef = useRef(null);
-  const lastAutoSavedKey = useRef("");
 
   const missingFields = useMemo(() => validateInvoice(invoice), [invoice]);
   const subtotal = useMemo(() => getInvoiceSubtotal(invoice), [invoice]);
@@ -231,8 +229,6 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "", exist
   function clearGeneratedOutput() {
     if (lastPreviewUrl.current) URL.revokeObjectURL(lastPreviewUrl.current);
     lastPreviewUrl.current = "";
-    generatedInvoiceRef.current = null;
-    lastAutoSavedKey.current = "";
     setPreviewUrl("");
     setGeneratedBlob(null);
     setFilename("");
@@ -344,8 +340,6 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "", exist
       setPreviewUrl(url);
       setGeneratedBlob(result.blob);
       setFilename(result.filename);
-      generatedInvoiceRef.current = normaliseInvoiceData(invoice);
-      lastAutoSavedKey.current = "";
     } catch (generationError) {
       setError(generationError.message || "Unable to generate PDF.");
     } finally {
@@ -353,24 +347,7 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "", exist
     }
   }
 
-  async function autoSaveDownloadedInvoice(fileName) {
-    if (!onSaveInvoice) return { saved: true, skipped: true };
-    const savedInvoice = generatedInvoiceRef.current || invoice;
-    const documentType = String(savedInvoice.documentLabel || "INVOICE").trim().toUpperCase();
-    if (documentType !== "INVOICE") return { saved: true, skipped: true };
-    const saveKey = `${savedInvoice.receiptNumber || ""}|${fileName}|${generatedBlob?.size || 0}`;
-    if (lastAutoSavedKey.current === saveKey) return { saved: true, skipped: true };
-    const saved = await onSaveInvoice({
-      invoice: savedInvoice,
-      tableLayout,
-      filename: fileName,
-      hasGeneratedPdf: true,
-    });
-    if (saved) lastAutoSavedKey.current = saveKey;
-    return { saved: Boolean(saved), skipped: false };
-  }
-
-  async function handleDownload() {
+  function handleDownload() {
     if (!generatedBlob) return;
     if (isDownloading) return;
 
@@ -379,27 +356,6 @@ export default function InvoiceGenerator({ onSaveInvoice, saveStatus = "", exist
     setIsDownloading(true);
 
     try {
-      const saveResult = await autoSaveDownloadedInvoice(fileName);
-      if (!saveResult.saved) {
-        setError("PDF was not downloaded because the invoice could not be saved. Please check the save message and try again.");
-        return;
-      }
-
-      if (typeof File !== "undefined" && navigator.share && navigator.canShare) {
-        const file = new File([generatedBlob], fileName, { type: "application/pdf" });
-        if (navigator.canShare({ files: [file] })) {
-          try {
-            await navigator.share({
-              files: [file],
-              title: fileName.replace(/\.pdf$/i, ""),
-            });
-            return;
-          } catch (shareError) {
-            if (shareError?.name === "AbortError") return;
-          }
-        }
-      }
-
       const downloadUrl = URL.createObjectURL(generatedBlob);
       const link = document.createElement("a");
       link.href = downloadUrl;
@@ -923,10 +879,9 @@ For airport arrival, 90 minutes waiting time is included.`}
             {previewUrl ? (
               <button type="button" className="download-button" onClick={handleDownload} disabled={isDownloading}>
                 {isDownloading ? <Loader2 className="spin" aria-hidden="true" /> : <Download aria-hidden="true" />}
-                {isDownloading ? "Saving..." : "Download"}
+                {isDownloading ? "Downloading..." : "Download PDF"}
               </button>
             ) : null}
-            {saveStatus ? <span className="workflow-save-status">{saveStatus}</span> : null}
           </div>
         </form>
 
