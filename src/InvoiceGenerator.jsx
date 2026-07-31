@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Download,
   FileText,
   Loader2,
   Plus,
   RefreshCcw,
   RotateCcw,
+  Share2,
   Sparkles,
   Trash2,
   UploadCloud,
@@ -90,7 +90,7 @@ export default function InvoiceGenerator({ existingInvoices = [] }) {
   const [generatedBlob, setGeneratedBlob] = useState(null);
   const [filename, setFilename] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
   const [error, setError] = useState("");
   const [quickPasteText, setQuickPasteText] = useState("");
   const [quickPasteStatus, setQuickPasteStatus] = useState("");
@@ -347,26 +347,35 @@ export default function InvoiceGenerator({ existingInvoices = [] }) {
     }
   }
 
-  function handleDownload() {
+  async function handleShare() {
     if (!generatedBlob) return;
-    if (isDownloading) return;
+    if (isSharing) return;
 
     const fileName = filename || "Levince Chauffeur.pdf";
     setError("");
-    setIsDownloading(true);
+    setIsSharing(true);
 
     try {
-      const downloadUrl = URL.createObjectURL(generatedBlob);
-      const link = document.createElement("a");
-      link.href = downloadUrl;
-      link.download = fileName;
-      link.rel = "noopener";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 30000);
+      if (typeof File === "undefined" || !navigator.share || !navigator.canShare) {
+        setError("Direct PDF sharing is not supported in this browser. Please open this page in Safari or Chrome.");
+        return;
+      }
+
+      const file = new File([generatedBlob], fileName, { type: "application/pdf" });
+      if (!navigator.canShare({ files: [file] })) {
+        setError("This browser cannot share PDF files directly. Please open this page in Safari or Chrome.");
+        return;
+      }
+
+      try {
+        await navigator.share({ files: [file] });
+      } catch (shareError) {
+        if (shareError?.name !== "AbortError") {
+          setError(shareError?.message || "Unable to open the PDF share window.");
+        }
+      }
     } finally {
-      setIsDownloading(false);
+      setIsSharing(false);
     }
   }
 
@@ -877,9 +886,9 @@ For airport arrival, 90 minutes waiting time is included.`}
               Generate PDF
             </button>
             {previewUrl ? (
-              <button type="button" className="download-button" onClick={handleDownload} disabled={isDownloading}>
-                {isDownloading ? <Loader2 className="spin" aria-hidden="true" /> : <Download aria-hidden="true" />}
-                {isDownloading ? "Downloading..." : "Download PDF"}
+              <button type="button" className="download-button" onClick={handleShare} disabled={isSharing}>
+                {isSharing ? <Loader2 className="spin" aria-hidden="true" /> : <Share2 aria-hidden="true" />}
+                {isSharing ? "Opening Share..." : "Share PDF"}
               </button>
             ) : null}
           </div>
