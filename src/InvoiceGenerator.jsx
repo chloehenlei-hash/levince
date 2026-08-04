@@ -18,6 +18,7 @@ import {
   DEFAULT_FOOTER_TEXT,
   DEFAULT_HEADER_LABELS,
   DEFAULT_NOTES_TITLE,
+  DEFAULT_PAYMENT_PROFILE,
   DEFAULT_PAYMENT_NOTES,
   defaultInvoiceData,
   generateInvoicePdf,
@@ -25,6 +26,7 @@ import {
   getInvoiceSubtotal,
   getInvoiceTotal,
   normaliseInvoiceData,
+  PAYMENT_PROFILES,
   validateInvoice,
 } from "./pdf/invoicePdf";
 import { parsePastedInvoiceDetails as parseInvoiceTextDetails } from "./utils/invoiceTextParser";
@@ -40,9 +42,10 @@ function formatAmount(value) {
 function withDefaultPaymentNotes(invoice) {
   return {
     ...invoice,
-    notesTitle: DEFAULT_NOTES_TITLE,
-    paymentNotes: DEFAULT_PAYMENT_NOTES,
-    footerText: DEFAULT_FOOTER_TEXT,
+    notesTitle: invoice.notesTitle || DEFAULT_NOTES_TITLE,
+    paymentProfile: invoice.paymentProfile || DEFAULT_PAYMENT_PROFILE,
+    paymentNotes: invoice.paymentNotes || DEFAULT_PAYMENT_NOTES,
+    footerText: invoice.footerText || DEFAULT_FOOTER_TEXT,
   };
 }
 
@@ -134,6 +137,18 @@ export default function InvoiceGenerator({ existingInvoices = [] }) {
 
   function updateInvoice(field, value) {
     setInvoice((current) => ({ ...current, [field]: value }));
+  }
+
+  function applyPaymentProfile(profileKey) {
+    const selectedKey = PAYMENT_PROFILES[profileKey] ? profileKey : DEFAULT_PAYMENT_PROFILE;
+    const profile = PAYMENT_PROFILES[selectedKey];
+    setInvoice((current) => ({
+      ...current,
+      paymentProfile: selectedKey,
+      paymentNotes: profile.paymentNotes,
+      footerText: profile.footerText,
+    }));
+    clearGeneratedOutput();
   }
 
   async function applyPdfFile(file) {
@@ -851,6 +866,19 @@ For airport arrival, 90 minutes waiting time is included.`}
           </Section>
 
           <Section title="Payment Notes">
+            <label className="field payment-profile-field">
+              <span>Payment company</span>
+              <select
+                value={invoice.paymentProfile || DEFAULT_PAYMENT_PROFILE}
+                onChange={(event) => applyPaymentProfile(event.target.value)}
+              >
+                {Object.entries(PAYMENT_PROFILES).map(([key, profile]) => (
+                  <option key={key} value={key}>
+                    {profile.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <div className="grid two">
               <Field
                 label="Notes heading"

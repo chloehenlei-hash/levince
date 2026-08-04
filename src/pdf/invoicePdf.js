@@ -45,16 +45,48 @@ export const DEFAULT_HEADER_LABELS = {
   invoiceTitle: "INVOICE TITLE",
 };
 export const DEFAULT_NOTES_TITLE = "Notes:";
-export const DEFAULT_PAYMENT_NOTES = [
-  "Payments can be made to:",
-  "Name : Vincenology Solution",
-  "Address : 141 Jalan Dato Onn Jaafar 30300 Ipoh Perak",
-  "Bank : Malayan Banking Berhad",
-  "Account Number : 5144-8652-7367",
-  "Bank Holder : Vincenology Solution",
-  "Swift Code : MBBEMYKL",
-].join("\n");
-export const DEFAULT_FOOTER_TEXT = "Vincenology Solution 141 Jalan Dato Onn Jaafar 30300 Ipoh Perak.";
+export const DEFAULT_PAYMENT_PROFILE = "solution";
+export const PAYMENT_PROFILES = {
+  solution: {
+    label: "Solution (Default)",
+    paymentNotes: [
+      "Payments can be made to:",
+      "Name : Vincenology Solution",
+      "Address : 141 Jalan Dato Onn Jaafar 30300 Ipoh Perak",
+      "Bank : Malayan Banking Berhad",
+      "Account Number : 5144-8652-7367",
+      "Bank Holder : Vincenology Solution",
+      "Swift Code : MBBEMYKL",
+    ].join("\n"),
+    footerText: "Vincenology Solution 141 Jalan Dato Onn Jaafar 30300 Ipoh Perak.",
+  },
+  cimb: {
+    label: "CIMB - LeVince Chauffeur Sdn Bhd",
+    paymentNotes: [
+      "Payments can be made to:",
+      "Name : LeVince Chauffeur Sdn Bhd",
+      "Address : No. 53, Jalan Megah 8, Taman Maju Satu, Sg. Jelok 43000 Kajang Selangor",
+      "Bank : CIMB Bank Berhad",
+      "Account Number : 860-623-6322",
+      "Swift Code : CIMBMYKL",
+    ].join("\n"),
+    footerText: "LeVince Chauffeur Sdn Bhd No. 53, Jalan Megah 8, Taman Maju Satu, Sg. Jelok 43000 Kajang Selangor",
+  },
+  singapore: {
+    label: "SG - LeVince Chauffeur Singapore Pte Ltd",
+    paymentNotes: [
+      "Company Name : LeVince Chauffeur Singapore Pte Ltd",
+      "Bank Name : Standard Chartered Bank (Singapore)",
+      "Bank Account No : 7897231048",
+      "Swift Code : SCBLSG22",
+      "Bank code : 9496",
+      "Branch code : 001",
+    ].join("\n"),
+    footerText: "LeVince Chauffeur Singapore Pte Ltd 462 Yichun Avenue 6 #03-1139, Blossom Spring Yishun",
+  },
+};
+export const DEFAULT_PAYMENT_NOTES = PAYMENT_PROFILES[DEFAULT_PAYMENT_PROFILE].paymentNotes;
+export const DEFAULT_FOOTER_TEXT = PAYMENT_PROFILES[DEFAULT_PAYMENT_PROFILE].footerText;
 
 function newItemId() {
   return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -265,6 +297,7 @@ export function defaultInvoiceData() {
     currency: "RM",
     totalOverride: "",
     notesTitle: DEFAULT_NOTES_TITLE,
+    paymentProfile: DEFAULT_PAYMENT_PROFILE,
     paymentNotes: DEFAULT_PAYMENT_NOTES,
     footerText: DEFAULT_FOOTER_TEXT,
     headerLabels: { ...DEFAULT_HEADER_LABELS },
@@ -299,6 +332,7 @@ export function createEmptyInvoiceData() {
     currency: "RM",
     totalOverride: "",
     notesTitle: DEFAULT_NOTES_TITLE,
+    paymentProfile: DEFAULT_PAYMENT_PROFILE,
     paymentNotes: DEFAULT_PAYMENT_NOTES,
     footerText: DEFAULT_FOOTER_TEXT,
     headerLabels: { ...DEFAULT_HEADER_LABELS },

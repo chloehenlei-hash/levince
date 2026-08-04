@@ -438,6 +438,11 @@ textarea:focus {
   width: min(230px, 100%);
 }
 
+.payment-profile-field {
+  width: min(460px, 100%);
+  margin-bottom: 14px;
+}
+
 .line-items {
   display: grid;
   gap: 8px;
