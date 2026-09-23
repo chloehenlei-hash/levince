@@ -442,7 +442,7 @@ function parsePercentageChargeLine(value) {
   if (!percentageMatch) return null;
 
   return {
-    description: "Credit Card Payment Gateway Charges",
+    description: `Credit Card Payment Gateway Charges (${Number(percentageMatch[1])}%)`,
     qty: "",
     percentage: Number(percentageMatch[1]),
   };

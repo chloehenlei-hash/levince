@@ -161,9 +161,9 @@ export async function parsePastedPdfInvoice(file, currentInvoice = {}) {
     ...parseHeader(rows),
     ...parseDocumentInfo(rows),
     ...parseTable(rows),
-    notesTitle: currentInvoice.notesTitle || DEFAULT_NOTES_TITLE,
-    paymentNotes: currentInvoice.paymentNotes || DEFAULT_PAYMENT_NOTES,
-    footerText: currentInvoice.footerText || DEFAULT_FOOTER_TEXT,
+    notesTitle: currentInvoice.notesTitle ?? DEFAULT_NOTES_TITLE,
+    paymentNotes: currentInvoice.paymentNotes ?? DEFAULT_PAYMENT_NOTES,
+    footerText: currentInvoice.footerText ?? DEFAULT_FOOTER_TEXT,
     headerLabels: { ...DEFAULT_HEADER_LABELS },
   };
   return normaliseInvoiceData(next);

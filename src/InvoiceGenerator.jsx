@@ -31,6 +31,7 @@ import {
 } from "./pdf/invoicePdf";
 import { parsePastedInvoiceDetails as parseInvoiceTextDetails } from "./utils/invoiceTextParser";
 import { getPdfFileFromPaste, parsePastedPdfInvoice } from "./utils/pdfInvoiceParser";
+import { hasFourPercentCharge, nextDocumentNumber, withoutPaymentDetails } from "./utils/invoiceForm";
 import { callWorkflowApi } from "./workflowApi.js";
 
 const STORAGE_KEY = "levince-invoice-draft";
@@ -42,10 +43,10 @@ function formatAmount(value) {
 function withDefaultPaymentNotes(invoice) {
   return {
     ...invoice,
-    notesTitle: invoice.notesTitle || DEFAULT_NOTES_TITLE,
-    paymentProfile: invoice.paymentProfile || DEFAULT_PAYMENT_PROFILE,
-    paymentNotes: invoice.paymentNotes || DEFAULT_PAYMENT_NOTES,
-    footerText: invoice.footerText || DEFAULT_FOOTER_TEXT,
+    notesTitle: invoice.notesTitle ?? DEFAULT_NOTES_TITLE,
+    paymentProfile: invoice.paymentProfile ?? DEFAULT_PAYMENT_PROFILE,
+    paymentNotes: invoice.paymentNotes ?? DEFAULT_PAYMENT_NOTES,
+    footerText: invoice.footerText ?? DEFAULT_FOOTER_TEXT,
   };
 }
 
@@ -55,7 +56,8 @@ function readStoredDraft() {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return { ...defaultInvoiceData(), invoiceDate: today };
     const draft = normaliseInvoiceData(JSON.parse(stored));
-    return withDefaultPaymentNotes({ ...draft, invoiceDate: today });
+    const restored = withDefaultPaymentNotes({ ...draft, invoiceDate: today });
+    return hasFourPercentCharge(restored) ? withoutPaymentDetails(restored) : restored;
   } catch {
     return { ...defaultInvoiceData(), invoiceDate: today };
   }
@@ -116,6 +118,13 @@ export default function InvoiceGenerator({ existingInvoices = [] }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(invoice));
   }, [invoice]);
 
+  useEffect(() => {
+    if (hasFourPercentCharge(invoice) && (invoice.paymentProfile || invoice.notesTitle || invoice.paymentNotes || invoice.footerText)) {
+      setInvoice((current) => withoutPaymentDetails(current));
+      clearGeneratedOutput();
+    }
+  }, [invoice]);
+
   useEffect(
     () => () => {
       if (lastPreviewUrl.current) URL.revokeObjectURL(lastPreviewUrl.current);
@@ -145,9 +154,15 @@ export default function InvoiceGenerator({ existingInvoices = [] }) {
     setInvoice((current) => ({
       ...current,
       paymentProfile: selectedKey,
+      notesTitle: DEFAULT_NOTES_TITLE,
       paymentNotes: profile.paymentNotes,
       footerText: profile.footerText,
     }));
+    clearGeneratedOutput();
+  }
+
+  function removePaymentDetails() {
+    setInvoice((current) => withoutPaymentDetails(current));
     clearGeneratedOutput();
   }
 
@@ -156,7 +171,8 @@ export default function InvoiceGenerator({ existingInvoices = [] }) {
     setQuickPasteStatus("Reading PDF...");
     try {
       const parsed = await parsePastedPdfInvoice(file, invoice);
-      setInvoice(withDefaultPaymentNotes(parsed));
+      const next = withDefaultPaymentNotes(parsed);
+      setInvoice(hasFourPercentCharge(next) ? withoutPaymentDetails(next) : next);
       clearGeneratedOutput();
       setError("");
       setQuickPasteStatus("PDF applied. Review the fields, then generate again.");
@@ -348,7 +364,7 @@ export default function InvoiceGenerator({ existingInvoices = [] }) {
 
     setIsGenerating(true);
     try {
-      const result = await generateInvoicePdf({ ...invoice, tableLayout });
+      const result = await generateInvoicePdf({ ...(hasFourPercentCharge(invoice) ? withoutPaymentDetails(invoice) : invoice), tableLayout });
       if (lastPreviewUrl.current) URL.revokeObjectURL(lastPreviewUrl.current);
       const url = URL.createObjectURL(result.blob);
       lastPreviewUrl.current = url;
@@ -467,21 +483,22 @@ export default function InvoiceGenerator({ existingInvoices = [] }) {
         </div>
         <div className="topbar-right">
           <div className="document-quick-panel" aria-label="Document type and number">
-            <label className="field document-type-field">
+            <div className="field document-type-field">
               <span>Document type</span>
-              <select value={invoice.documentLabel} onChange={(event) => updateInvoice("documentLabel", event.target.value)}>
-                <option value="INVOICE">INVOICE</option>
-                <option value="QUOTATION">QUOTATION</option>
-                <option value="RECEIPT">RECEIPT</option>
-              </select>
-            </label>
-            <Field
-              label="Document number"
-              value={invoice.receiptNumber}
-              required
-              placeholder="104247"
-              onChange={(value) => updateInvoice("receiptNumber", value)}
-            />
+              <div className="choice-buttons" role="group" aria-label="Document type">
+                {["INVOICE", "RECEIPT", "QUOTATION"].map((type) => (
+                  <button key={type} type="button" className="choice-button" aria-pressed={invoice.documentLabel === type} onClick={() => updateInvoice("documentLabel", type)}>
+                    {type === "INVOICE" ? "Invoice" : type === "RECEIPT" ? "Receipt" : "Quotation"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="number-field">
+              <Field label="Document number" value={invoice.receiptNumber} required placeholder="104247" onChange={(value) => updateInvoice("receiptNumber", value)} />
+              <button type="button" className="number-increment" onClick={() => updateInvoice("receiptNumber", nextDocumentNumber(invoice.receiptNumber))} title="Next document number" aria-label="Increment document number">
+                <Plus aria-hidden="true" />
+              </button>
+            </div>
             {duplicateInvoice ? (
               <p className="duplicate-warning">Existing record: {duplicateInvoice["Customer Name"] || "Unknown customer"} · {duplicateInvoice.Status || "Saved"}</p>
             ) : null}
@@ -866,19 +883,21 @@ For airport arrival, 90 minutes waiting time is included.`}
           </Section>
 
           <Section title="Payment Notes">
-            <label className="field payment-profile-field">
-              <span>Payment company</span>
-              <select
-                value={invoice.paymentProfile || DEFAULT_PAYMENT_PROFILE}
-                onChange={(event) => applyPaymentProfile(event.target.value)}
-              >
+            <div className="payment-profile-field">
+              <div className="payment-profile-header">
+                <span>Payment company</span>
+                <button type="button" className="payment-remove" onClick={removePaymentDetails} title="Remove all payment notes and footer">
+                  <Trash2 aria-hidden="true" /> Remove
+                </button>
+              </div>
+              <div className="choice-buttons" role="group" aria-label="Payment company">
                 {Object.entries(PAYMENT_PROFILES).map(([key, profile]) => (
-                  <option key={key} value={key}>
-                    {profile.label}
-                  </option>
+                  <button key={key} type="button" className="choice-button" aria-pressed={invoice.paymentProfile === key} title={profile.label} onClick={() => applyPaymentProfile(key)}>
+                    {key === "solution" ? "Solution" : key === "cimb" ? "CIMB" : "SG"}
+                  </button>
                 ))}
-              </select>
-            </label>
+              </div>
+            </div>
             <div className="grid two">
               <Field
                 label="Notes heading"
