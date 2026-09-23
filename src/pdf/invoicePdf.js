@@ -68,7 +68,7 @@ export const PAYMENT_PROFILES = {
       "Address : No. 53, Jalan Megah 8, Taman Maju Satu, Sg. Jelok 43000 Kajang Selangor",
       "Bank : CIMB Bank Berhad",
       "Account Number : 860-623-6322",
-      "Swift Code : CIMBMYKL",
+      "Swift Code : CIBBMYKL",
     ].join("\n"),
     footerText: "LeVince Chauffeur Sdn Bhd No. 53, Jalan Megah 8, Taman Maju Satu, Sg. Jelok 43000 Kajang Selangor",
   },

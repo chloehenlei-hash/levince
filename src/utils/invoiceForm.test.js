@@ -2,7 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { hasFourPercentCharge, nextDocumentNumber, withoutPaymentDetails } from "./invoiceForm.js";
 import { parsePastedInvoiceDetails } from "./invoiceTextParser.js";
-import { createEmptyInvoiceData } from "../pdf/invoicePdf.js";
+import { createEmptyInvoiceData, PAYMENT_PROFILES } from "../pdf/invoicePdf.js";
+
+test("CIMB payment profile uses the confirmed SWIFT code", () => {
+  assert.match(PAYMENT_PROFILES.cimb.paymentNotes, /Swift Code : CIBBMYKL/);
+});
 
 test("document number increments the last numeric part", () => {
   assert.equal(nextDocumentNumber("1"), "2");

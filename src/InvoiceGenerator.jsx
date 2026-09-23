@@ -41,11 +41,13 @@ function formatAmount(value) {
 }
 
 function withDefaultPaymentNotes(invoice) {
+  const paymentProfile = invoice.paymentProfile ?? DEFAULT_PAYMENT_PROFILE;
+  const paymentNotes = invoice.paymentNotes ?? DEFAULT_PAYMENT_NOTES;
   return {
     ...invoice,
     notesTitle: invoice.notesTitle ?? DEFAULT_NOTES_TITLE,
-    paymentProfile: invoice.paymentProfile ?? DEFAULT_PAYMENT_PROFILE,
-    paymentNotes: invoice.paymentNotes ?? DEFAULT_PAYMENT_NOTES,
+    paymentProfile,
+    paymentNotes: paymentProfile === "cimb" ? paymentNotes.replace(/\bCIMBMYKL\b/g, "CIBBMYKL") : paymentNotes,
     footerText: invoice.footerText ?? DEFAULT_FOOTER_TEXT,
   };
 }
@@ -89,7 +91,7 @@ function Section({ title, children }) {
   );
 }
 
-export default function InvoiceGenerator({ existingInvoices = [] }) {
+export default function InvoiceGenerator() {
   const [invoice, setInvoice] = useState(readStoredDraft);
   const [previewUrl, setPreviewUrl] = useState("");
   const [generatedBlob, setGeneratedBlob] = useState(null);
@@ -108,11 +110,6 @@ export default function InvoiceGenerator({ existingInvoices = [] }) {
   const missingFields = useMemo(() => validateInvoice(invoice), [invoice]);
   const subtotal = useMemo(() => getInvoiceSubtotal(invoice), [invoice]);
   const total = useMemo(() => getInvoiceTotal(invoice), [invoice]);
-  const duplicateInvoice = useMemo(() => {
-    const no = String(invoice.receiptNumber || "").trim();
-    if (!no) return null;
-    return existingInvoices.find((row) => String(row["Internal Invoice No"] || "").trim() === no) || null;
-  }, [existingInvoices, invoice.receiptNumber]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(invoice));
@@ -477,9 +474,12 @@ export default function InvoiceGenerator({ existingInvoices = [] }) {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <div>
-          <p className="brand-label">Levince internal tool</p>
-          <h1>Invoice Generator</h1>
+        <div className="brand-heading">
+          <img src={`${import.meta.env.BASE_URL}assets/levince-logo.png`} alt="LeVince" />
+          <div>
+            <p className="brand-label">LeVince</p>
+            <h1>Invoice Generator</h1>
+          </div>
         </div>
         <div className="topbar-right">
           <div className="document-quick-panel" aria-label="Document type and number">
@@ -499,9 +499,6 @@ export default function InvoiceGenerator({ existingInvoices = [] }) {
                 <Plus aria-hidden="true" />
               </button>
             </div>
-            {duplicateInvoice ? (
-              <p className="duplicate-warning">Existing record: {duplicateInvoice["Customer Name"] || "Unknown customer"} · {duplicateInvoice.Status || "Saved"}</p>
-            ) : null}
           </div>
           <div className="topbar-actions">
             <button type="button" className="ghost-button" onClick={resetToSample} title="Load sample invoice">
