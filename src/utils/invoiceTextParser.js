@@ -578,6 +578,7 @@ export function parsePastedInvoiceDetails(rawText, currentInvoice) {
     address: "",
     taxNumber: "",
   };
+  const websites = [];
   let explicitServiceHeading = "";
   let isCollectingAddress = false;
 
@@ -745,6 +746,8 @@ export function parsePastedInvoiceDetails(rawText, currentInvoice) {
       } else if (/^(address|company address|billing address)$/.test(label)) {
         appendAddressLine(value);
         if (!value) isCollectingAddress = true;
+      } else if (/^(website|web site|url)$/.test(label)) {
+        if (value) websites.push(value);
       } else if (/^(tax|tax no|tax number|tax id|tin|trn|vat|vat no|vat number)$/.test(label)) {
         fallbackCustomerFields.taxNumber = value;
       }
@@ -758,33 +761,35 @@ export function parsePastedInvoiceDetails(rawText, currentInvoice) {
     });
   }
 
+  const serviceInputLines = applyUnlabelledCustomerDetails(unlabelledLines);
+
   if (!String(nextInvoice.customerName || "").trim() && fallbackCustomerFields.licenseNumber) {
     setHeaderLabel("customerName", "LICENSE NUMBER");
     nextInvoice.customerName = fallbackCustomerFields.licenseNumber;
   }
-  const email = String(nextInvoice.email || "").trim();
-  const phone = String(nextInvoice.phone || "").trim();
   const spareContacts = [
     { label: "ADDRESS", value: fallbackCustomerFields.address },
+    ...websites.map((value) => ({ label: "WEBSITE", value })),
     { label: "TAX NUMBER", value: fallbackCustomerFields.taxNumber },
   ].filter((entry) => String(entry.value || "").trim());
-
-  if (!email && spareContacts.length) {
-    const contact = spareContacts.shift();
-    setHeaderLabel("email", contact.label);
-    nextInvoice.email = contact.value;
-  }
-  if (!phone && spareContacts.length) {
-    const contact = spareContacts.shift();
-    setHeaderLabel("phone", contact.label);
-    nextInvoice.phone = contact.value;
-  }
+  const emptyDisplayFields = ["companyName", "email", "phone"].filter(
+    (field) => !String(nextInvoice[field] || "").trim() || nextInvoice[field] === "-",
+  );
+  const overflowContacts = [];
+  spareContacts.forEach((contact) => {
+    const field = emptyDisplayFields.shift();
+    if (!field) {
+      overflowContacts.push(contact);
+      return;
+    }
+    setHeaderLabel(field, contact.label);
+    nextInvoice[field] = contact.value;
+  });
   if (!String(nextInvoice.phone || "").trim() && (fallbackCustomerFields.licenseNumber || nextInvoice.email)) {
     setHeaderLabel("phone", DEFAULT_HEADER_LABELS.phone);
     nextInvoice.phone = "-";
   }
 
-  const serviceInputLines = applyUnlabelledCustomerDetails(unlabelledLines);
   if (!String(nextInvoice.customerName || "").trim() && hasCustomerDisplayContext()) {
     setHeaderLabel("customerName", DEFAULT_HEADER_LABELS.customerName);
     nextInvoice.customerName = "-";
@@ -1087,6 +1092,17 @@ export function parsePastedInvoiceDetails(rawText, currentInvoice) {
     pendingLine = serviceLine.amount ? null : serviceLine;
     lastCompletedLine = serviceLine.amount ? serviceLine : null;
   });
+
+  if (overflowContacts.length) {
+    const dateGroup = dateGroups[dateGroups.length - 1] || { ...createServiceDate({ date: "" }), lines: [] };
+    if (!dateGroups.length) dateGroups.push(dateGroup);
+    if (!dateGroup.lines.some((line) => isRemarkHeading(line.description))) {
+      dateGroup.lines.push(createDescriptionOnlyLine("Remark"));
+    }
+    overflowContacts.forEach(({ label, value }) => {
+      dateGroup.lines.push(createDescriptionOnlyLine(`${label}: ${value}`));
+    });
+  }
 
   const percentageChargeBase = getParsedSubtotal(dateGroups);
   pendingPercentageCharges.forEach(({ line, percentage }) => {
