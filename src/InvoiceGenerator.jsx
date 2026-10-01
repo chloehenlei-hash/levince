@@ -31,7 +31,7 @@ import {
 } from "./pdf/invoicePdf";
 import { parsePastedInvoiceDetails as parseInvoiceTextDetails } from "./utils/invoiceTextParser";
 import { getPdfFileFromPaste, parsePastedPdfInvoice } from "./utils/pdfInvoiceParser";
-import { hasFourPercentCharge, nextDocumentNumber, withoutPaymentDetails } from "./utils/invoiceForm";
+import { nextDocumentNumber, withoutPaymentDetails } from "./utils/invoiceForm";
 import { callWorkflowApi } from "./workflowApi.js";
 
 const STORAGE_KEY = "levince-invoice-draft";
@@ -59,7 +59,7 @@ function readStoredDraft() {
     if (!stored) return { ...defaultInvoiceData(), invoiceDate: today };
     const draft = normaliseInvoiceData(JSON.parse(stored));
     const restored = withDefaultPaymentNotes({ ...draft, invoiceDate: today });
-    return hasFourPercentCharge(restored) ? withoutPaymentDetails(restored) : restored;
+    return restored;
   } catch {
     return { ...defaultInvoiceData(), invoiceDate: today };
   }
@@ -115,13 +115,6 @@ export default function InvoiceGenerator() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(invoice));
   }, [invoice]);
 
-  useEffect(() => {
-    if (hasFourPercentCharge(invoice) && (invoice.paymentProfile || invoice.notesTitle || invoice.paymentNotes || invoice.footerText)) {
-      setInvoice((current) => withoutPaymentDetails(current));
-      clearGeneratedOutput();
-    }
-  }, [invoice]);
-
   useEffect(
     () => () => {
       if (lastPreviewUrl.current) URL.revokeObjectURL(lastPreviewUrl.current);
@@ -169,7 +162,7 @@ export default function InvoiceGenerator() {
     try {
       const parsed = await parsePastedPdfInvoice(file, invoice);
       const next = withDefaultPaymentNotes(parsed);
-      setInvoice(hasFourPercentCharge(next) ? withoutPaymentDetails(next) : next);
+      setInvoice(next);
       clearGeneratedOutput();
       setError("");
       setQuickPasteStatus("PDF applied. Review the fields, then generate again.");
@@ -361,7 +354,7 @@ export default function InvoiceGenerator() {
 
     setIsGenerating(true);
     try {
-      const result = await generateInvoicePdf({ ...(hasFourPercentCharge(invoice) ? withoutPaymentDetails(invoice) : invoice), tableLayout });
+      const result = await generateInvoicePdf({ ...invoice, tableLayout });
       if (lastPreviewUrl.current) URL.revokeObjectURL(lastPreviewUrl.current);
       const url = URL.createObjectURL(result.blob);
       lastPreviewUrl.current = url;

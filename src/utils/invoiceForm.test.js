@@ -15,15 +15,18 @@ test("document number increments the last numeric part", () => {
   assert.equal(nextDocumentNumber(""), "1");
 });
 
-test("4% charge clears every payment field without changing invoice lines", () => {
+test("4% charge keeps payment details until Remove is explicitly used", () => {
   const invoice = parsePastedInvoiceDetails("company: Example\nname: Test\nRM 100\n+4%", createEmptyInvoiceData());
   assert.equal(hasFourPercentCharge(invoice), true);
+  assert.equal(invoice.paymentProfile, "solution");
+  assert.match(invoice.paymentNotes, /Payments can be made to:/);
   const cleared = withoutPaymentDetails(invoice);
   assert.equal(cleared.paymentProfile, "");
   assert.equal(cleared.notesTitle, "");
   assert.equal(cleared.paymentNotes, "");
   assert.equal(cleared.footerText, "");
   assert.equal(cleared.serviceGroups, invoice.serviceGroups);
+  assert.equal(invoice.paymentProfile, "solution");
 });
 
 test("other percentages and note text do not clear payment", () => {

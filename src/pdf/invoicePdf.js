@@ -35,6 +35,77 @@ const TABLE_TEXT_SIZE = 10;
 const TABLE_ROW_HEIGHT = 20.75;
 const TABLE_DASHED_BOUNDARIES = 17;
 const REMARK_LINE_HEIGHT = 12;
+const pageTextRenderers = new WeakMap();
+
+function canUsePdfFont(font, value) {
+  try {
+    font.encodeText(String(value || ""));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function canvasFont(font, size) {
+  return `${font.__invoiceBold ? "700" : "400"} ${size}px Arial, "PingFang SC", "Microsoft YaHei", sans-serif`;
+}
+
+function measureText(text, font, size) {
+  const value = String(text || "");
+  if (canUsePdfFont(font, value)) return font.widthOfTextAtSize(value, size);
+  if (typeof document === "undefined") throw new Error("Chinese PDF text requires a browser canvas.");
+  const context = document.createElement("canvas").getContext("2d");
+  if (!context) throw new Error("Chinese PDF text requires a browser canvas.");
+  context.font = canvasFont(font, size);
+  return context.measureText(value).width;
+}
+
+function drawInvoiceText(page, text, options) {
+  if (canUsePdfFont(options.font, text)) {
+    page.drawText(text, options);
+    return;
+  }
+  const pending = pageTextRenderers.get(page);
+  if (!pending) throw new Error("Unable to render Chinese PDF text.");
+  pending.push({ page, text, ...options });
+}
+
+async function drawCanvasText(pdfDoc, pending) {
+  const imageCache = new Map();
+  for (const { page, text, x, y, size, font, color } of pending) {
+    const key = JSON.stringify([text, size, Boolean(font.__invoiceBold), color.red, color.green, color.blue]);
+    let entry = imageCache.get(key);
+    if (!entry) {
+      const scale = 3;
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Chinese PDF text requires a browser canvas.");
+      context.font = canvasFont(font, size * scale);
+      const metrics = context.measureText(text);
+      const ascent = Math.ceil(metrics.actualBoundingBoxAscent || size * scale);
+      const descent = Math.ceil(metrics.actualBoundingBoxDescent || size * scale * 0.3);
+      const baseline = ascent + 3;
+      canvas.width = Math.ceil(metrics.width) + 6;
+      canvas.height = baseline + descent + 3;
+      context.font = canvasFont(font, size * scale);
+      context.fillStyle = `rgb(${Math.round(color.red * 255)}, ${Math.round(color.green * 255)}, ${Math.round(color.blue * 255)})`;
+      context.fillText(text, 3, baseline);
+      entry = {
+        image: await pdfDoc.embedPng(canvas.toDataURL("image/png")),
+        width: canvas.width / scale,
+        height: canvas.height / scale,
+        belowBaseline: (canvas.height - baseline) / scale,
+      };
+      imageCache.set(key, entry);
+    }
+    page.drawImage(entry.image, {
+      x: x - 1,
+      y: y - entry.belowBaseline,
+      width: entry.width,
+      height: entry.height,
+    });
+  }
+}
 
 export const DEFAULT_HEADER_LABELS = {
   companyName: "COMPANY NAME",
@@ -129,20 +200,20 @@ function fitTextToWidth(text, maxWidth, font, size, options = {}) {
   let fontSize = size;
   const value = String(text || "");
 
-  while (fontSize > minSize && font.widthOfTextAtSize(value, fontSize) > maxWidth) {
+  while (fontSize > minSize && measureText(value, font, fontSize) > maxWidth) {
     fontSize -= 0.5;
   }
 
-  if (font.widthOfTextAtSize(value, fontSize) <= maxWidth) {
-    return { text: value, size: fontSize, width: font.widthOfTextAtSize(value, fontSize) };
+  if (measureText(value, font, fontSize) <= maxWidth) {
+    return { text: value, size: fontSize, width: measureText(value, font, fontSize) };
   }
 
   let trimmed = value;
-  while (trimmed && font.widthOfTextAtSize(`${trimmed}${suffix}`, fontSize) > maxWidth) {
+  while (trimmed && measureText(`${trimmed}${suffix}`, font, fontSize) > maxWidth) {
     trimmed = trimmed.slice(0, -1);
   }
   const fitted = trimmed ? `${trimmed.trimEnd()}${suffix}` : "";
-  return { text: fitted, size: fontSize, width: font.widthOfTextAtSize(fitted, fontSize) };
+  return { text: fitted, size: fontSize, width: measureText(fitted, font, fontSize) };
 }
 
 function splitLongWordToWidth(word, maxWidth, font, size) {
@@ -153,7 +224,7 @@ function splitLongWordToWidth(word, maxWidth, font, size) {
     .split("")
     .forEach((character) => {
       const nextChunk = `${chunk}${character}`;
-      if (!chunk || font.widthOfTextAtSize(nextChunk, size) <= maxWidth) {
+      if (!chunk || measureText(nextChunk, font, size) <= maxWidth) {
         chunk = nextChunk;
         return;
       }
@@ -176,7 +247,7 @@ function splitTextToWidth(text, maxWidth, font, size) {
 
   words.forEach((word) => {
     const candidate = currentLine ? `${currentLine} ${word}` : word;
-    if (font.widthOfTextAtSize(candidate, size) <= maxWidth) {
+    if (measureText(candidate, font, size) <= maxWidth) {
       currentLine = candidate;
       return;
     }
@@ -186,7 +257,7 @@ function splitTextToWidth(text, maxWidth, font, size) {
       currentLine = "";
     }
 
-    if (font.widthOfTextAtSize(word, size) <= maxWidth) {
+    if (measureText(word, font, size) <= maxWidth) {
       currentLine = word;
       return;
     }
@@ -204,7 +275,7 @@ function drawBoundedText(page, text, x, y, maxWidth, font, size, options = {}) {
   const color = options.color ?? black;
   const fitted = fitTextToWidth(text, maxWidth, font, size, options);
   if (!fitted.text) return fitted;
-  page.drawText(fitted.text, { x, y, size: fitted.size, font, color });
+  drawInvoiceText(page, fitted.text, { x, y, size: fitted.size, font, color });
   return fitted;
 }
 
@@ -225,7 +296,7 @@ function drawWrappedText(page, text, x, y, maxWidth, font, size, options = {}) {
       ? fitTextToWidth(line, maxWidth, font, size, { minSize: size }).text
       : line;
     if (!lineText) return;
-    page.drawText(lineText, { x, y: y - index * lineHeight, size, font, color });
+    drawInvoiceText(page, lineText, { x, y: y - index * lineHeight, size, font, color });
   });
 
   return visibleLines.length || 1;
@@ -236,7 +307,7 @@ function drawRightBoundedText(page, text, leftX, rightX, y, font, size, options 
   const maxWidth = Math.max(0, rightX - leftX);
   const fitted = fitTextToWidth(text, maxWidth, font, size, options);
   if (!fitted.text) return fitted;
-  page.drawText(fitted.text, {
+  drawInvoiceText(page, fitted.text, {
     x: rightX - fitted.width,
     y,
     size: fitted.size,
@@ -251,7 +322,7 @@ function drawCenteredBoundedText(page, text, leftX, rightX, y, font, size, optio
   const maxWidth = Math.max(0, rightX - leftX);
   const fitted = fitTextToWidth(text, maxWidth, font, size, options);
   if (!fitted.text) return fitted;
-  page.drawText(fitted.text, {
+  drawInvoiceText(page, fitted.text, {
     x: leftX + (maxWidth - fitted.width) / 2,
     y,
     size: fitted.size,
@@ -666,8 +737,10 @@ export async function generateInvoicePdf(data) {
   const pdfDoc = await PDFDocument.create();
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  helveticaBold.__invoiceBold = true;
   const helveticaLight = helvetica;
   const logo = await pdfDoc.embedPng(logoBytes);
+  const pendingText = [];
   const tableLayout = getTableLayout(invoiceData.tableLayout);
   const tableRows = buildTableRows(invoiceData.serviceGroups, helvetica, tableLayout.descriptionMaxWidth);
   const pageRows = paginateRows(tableRows);
@@ -843,7 +916,7 @@ export async function generateInvoicePdf(data) {
     if (row.type === "spacer") return;
     if (row.type === "remark") {
       row.lines.forEach((line, lineIndex) => {
-        page.drawText(line || "", {
+        drawInvoiceText(page, line || "", {
           x: tableLeftX,
           y: y - lineIndex * REMARK_LINE_HEIGHT,
           size: TABLE_TEXT_SIZE,
@@ -871,7 +944,7 @@ export async function generateInvoicePdf(data) {
     const descriptionStartY = y - rowMiddleOffset + descriptionLineOffset;
     const valueY = y - rowMiddleOffset;
     descriptionLines.forEach((line, lineIndex) => {
-      page.drawText(line || "", {
+      drawInvoiceText(page, line || "", {
         x: tableLeftX,
         y: descriptionStartY - lineIndex * REMARK_LINE_HEIGHT,
         size: TABLE_TEXT_SIZE,
@@ -938,6 +1011,7 @@ export async function generateInvoicePdf(data) {
 
   pageRows.forEach((rowsForPage, pageIndex) => {
     const page = pdfDoc.addPage([595.28, 841.89]);
+    pageTextRenderers.set(page, pendingText);
     const drawableRows =
       pageIndex > 0 && repeatedHeading
         ? [{ type: "heading", text: repeatedHeading }, ...rowsForPage]
@@ -951,6 +1025,7 @@ export async function generateInvoicePdf(data) {
     );
   });
 
+  await drawCanvasText(pdfDoc, pendingText);
   const pdfBytes = await pdfDoc.save();
   const blob = new Blob([pdfBytes], { type: "application/pdf" });
   const filename = `Levince Chauffeur ${cleanFilename(invoiceData.receiptNumber)}.pdf`;
