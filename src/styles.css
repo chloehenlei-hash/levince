@@ -20,6 +20,27 @@
 
 * { box-sizing: border-box; }
 
+.generator-tabs { display: flex; gap: 8px; flex-wrap: wrap; width: min(1360px, calc(100% - 48px)); margin: 20px auto 0; }
+.generator-tabs svg { width: 16px; height: 16px; }
+.generator-tabs .choice-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; flex: 0 1 auto; padding: 8px 16px; }
+.sql-number-fields { display: grid; grid-template-columns: 1fr 1.4fr; gap: 12px; width: 100%; }
+.sql-lines { display: grid; gap: 18px; }
+.sql-line { border-bottom: 1px solid var(--line); padding-bottom: 18px; display: grid; gap: 10px; }
+.sql-line-heading, .sql-tax-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.sql-price-fields { display: grid; grid-template-columns: .6fr 1fr 1fr; gap: 10px; }
+.sql-totals { margin: 16px 0 0; }
+.sql-totals > div { display: flex; justify-content: space-between; padding: 8px 0; gap: 12px; }
+.sql-totals dd { margin: 0; font-weight: 700; }
+.sql-totals > div:last-child { border-top: 1px solid var(--line); font-size: 1.15rem; }
+.sql-pdf-preview { width: 100%; height: 85vh; min-height: 540px; border: 0; }
+.sql-generator .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.sql-generator textarea { width: 100%; resize: vertical; }
+@media (max-width: 600px) {
+  .sql-number-fields, .sql-generator .field-grid { grid-template-columns: 1fr; }
+  .generator-tabs { width: calc(100% - 32px); }
+  .sql-price-fields { grid-template-columns: 1fr; }
+}
+
 body {
   min-width: 320px;
   min-height: 100vh;

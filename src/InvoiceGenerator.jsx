@@ -9,7 +9,7 @@ import {
   Sparkles,
   Trash2,
   UploadCloud,
-} from "lucide-react";
+} from "./icons.js";
 import {
   createEmptyInvoiceData,
   createServiceDate,
